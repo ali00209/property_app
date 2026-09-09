@@ -1,0 +1,1 @@
+ALTER TABLE area_maps ADD COLUMN rotation numeric(6, 2) NOT NULL DEFAULT 0;
