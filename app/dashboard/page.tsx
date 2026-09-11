@@ -17,11 +17,7 @@ import type { Property } from "@/types";
 
 const statusVariant: Record<Property["status"], BadgeVariant> = {
   available: "green",
-  leased: "purple",
   off_market: "blue",
-  rented: "cyan",
-  sold: "red",
-  under_contract: "yellow",
   archived: "neutral",
   maintenance: "teal",
   occupied: "orange",

@@ -8,6 +8,9 @@ export const taxPolicySchema = z
       .string()
       .min(1, "Value is required.")
       .refine((value) => Number(value) >= 0, "Value must be non-negative."),
+    minValue: z.string().optional(),
+    maxValue: z.string().optional(),
+    filerStatus: z.enum(["filer", "late_filer", "non_filer"]).optional(),
     appliesTo: z
       .array(
         z.enum([
@@ -53,6 +56,9 @@ export const defaults: TaxPolicyFormValues = {
   name: "",
   kind: "percentage",
   value: "",
+  minValue: undefined,
+  maxValue: undefined,
+  filerStatus: undefined,
   appliesTo: [],
   active: true,
   effectiveStart: undefined,

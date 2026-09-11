@@ -81,7 +81,7 @@ function UserForm({
     if (user) {
       form.reset({
         name: user.name,
-        email: user.email,
+        email: user.email ?? "",
         phone: user.phone ?? "",
         role: user.role as CreateUserFormValues["role"],
         password: "",
@@ -133,7 +133,7 @@ function UserForm({
                 name="email"
                 label="Email"
                 type="email"
-                isRequired
+                isOptional
               />
               <TextField form={form} name="phone" label="Phone" isOptional />
               <SelectField
@@ -255,7 +255,7 @@ export function UserList({ users }: { users: User[] }) {
     if (!term) return true;
     return (
       user.name.toLowerCase().includes(term) ||
-      user.email.toLowerCase().includes(term) ||
+      (user.email?.toLowerCase().includes(term) ?? false) ||
       user.role.toLowerCase().includes(term)
     );
   });
@@ -312,7 +312,7 @@ export function UserList({ users }: { users: User[] }) {
                   <Text type="body">{user.name}</Text>
                 </TableCell>
                 <TableCell>
-                  <Text type="body">{user.email}</Text>
+                  <Text type="body">{user.email ?? "—"}</Text>
                 </TableCell>
                 <TableCell>
                   <Text type="body">{user.phone ?? "—"}</Text>

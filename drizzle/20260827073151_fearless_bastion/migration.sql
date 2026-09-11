@@ -1,1 +1,0 @@
-ALTER TYPE "purchase_contract_status" ADD VALUE 'pending_down_payment' BEFORE 'active';

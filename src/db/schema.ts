@@ -1,26 +1,50 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
+  customType,
   date,
+  index,
   integer,
   jsonb,
   numeric,
   pgEnum,
   pgTable,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
   uuid,
   varchar,
-  index,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+
+// ─────────────────────────────────────────────────────────────────────────
+// Custom geography column types (requires `CREATE EXTENSION postgis;`
+// to be run once in a migration before these tables are created).
+// ─────────────────────────────────────────────────────────────────────────
+
+export const geographyPoint = customType<{ data: string }>({
+  dataType() {
+    return "geography(Point,4326)";
+  },
+});
+
+export const geographyPolygon = customType<{ data: string }>({
+  dataType() {
+    return "geography(Polygon,4326)";
+  },
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────
 
 export const propertyTypeEnum = pgEnum("property_type", [
   "residential",
   "commercial",
   "industrial",
   "land",
-  "plot",
+  "unit",
   "apartment",
   "house",
   "office",
@@ -30,15 +54,35 @@ export const propertyTypeEnum = pgEnum("property_type", [
 
 export const propertyStatusEnum = pgEnum("property_status", [
   "available",
-  "sold",
-  "leased",
-  "rented",
-  "under_contract",
   "off_market",
   "occupied",
   "vacant",
   "maintenance",
   "archived",
+]);
+
+// What the listing is being marketed for, independent of its current
+// occupancy/deal status above. Drives public search/browse filters.
+export const listingPurposeEnum = pgEnum("listing_purpose", ["sale", "rent"]);
+
+export const areaUnitEnum = pgEnum("area_unit", [
+  "marla",
+  "kanal",
+  "acre",
+  "sqft",
+  "sqyd",
+  "sqm",
+]);
+
+// A "society" here covers anything a unit/address sits inside: a formal
+// housing society, a commercial zone, or a generic named locality that
+// doesn't have surveyed unit data (yet). This replaces the old, separate
+// `localities` table — same concept, one table.
+export const societyKindEnum = pgEnum("society_kind", [
+  "housing_society",
+  "commercial_area",
+  "industrial_zone",
+  "general_locality",
 ]);
 
 export const maintenanceStatusEnum = pgEnum("maintenance_status", [
@@ -57,75 +101,23 @@ export const maintenancePriorityEnum = pgEnum("maintenance_priority", [
   "urgent",
 ]);
 
-export const recurringFrequencyEnum = pgEnum("recurring_frequency", [
-  "monthly",
-  "quarterly",
-  "annually",
-  "custom",
+export const paymentMethodEnum = pgEnum("payment_method", [
+  "cash",
+  "bank_transfer",
+  "cheque",
+  "card",
+  "online",
 ]);
 
-export const transactionStatusEnum = pgEnum("transaction_status", [
-  "paid",
-  "pending",
-  "overdue",
-  "partial",
-  "refunded",
+// entityType/entityId polymorphic pairing used by `documents` and `activity`.
+export const documentEntityTypeEnum = pgEnum("document_entity_type", [
+  "users",
+  "properties",
+  "maintenance",
+  "deals",
 ]);
 
-export const installmentFrequencyEnum = pgEnum("installment_frequency", [
-  "monthly",
-  "quarterly",
-  "annually",
-]);
-
-export const installmentPlanStatusEnum = pgEnum("installment_plan_status", [
-  "draft",
-  "published",
-  "archived",
-]);
-
-export const purchaseRequestStatusEnum = pgEnum("purchase_request_status", [
-  "pending",
-  "approved",
-  "rejected",
-  "cancelled",
-]);
-
-export const purchaseContractStatusEnum = pgEnum("purchase_contract_status", [
-  "pending_down_payment",
-  "active",
-  "cancelled",
-  "completed",
-  "defaulted",
-]);
-
-export const scheduledInstallmentStatusEnum = pgEnum(
-  "scheduled_installment_status",
-  ["scheduled", "partially_paid", "paid", "overdue", "cancelled"],
-);
-
-export const paymentEntryTypeEnum = pgEnum("payment_entry_type", [
-  "payment",
-  "reversal",
-  "refund",
-]);
-
-export const paymentEntryStatusEnum = pgEnum("payment_entry_status", [
-  "posted",
-  "reversed",
-]);
-
-// export const userRole = pgEnum("user_role", [
-//   "admin",
-//   "client",
-//   "property_manager",
-//   "accountant",
-//   "owner",
-//   "tenant",
-//   "maintenance_staff",
-// ]);
-
-export const activityType = pgEnum("activity_type", [
+export const activityEntityTypeEnum = pgEnum("activity_entity_type", [
   "users",
   "userBankAccounts",
   "properties",
@@ -133,20 +125,14 @@ export const activityType = pgEnum("activity_type", [
   "propertyImages",
   "addresses",
   "propertyOwner",
-  "transactions",
-  "leases",
   "maintenance",
   "documents",
+  "deals",
+  "societies",
+  "units",
 ]);
 
-export const documentType = pgEnum("document_type", [
-  "users",
-  "properties",
-  "maintenance",
-  "transaction",
-]);
-
-export const activityAction = pgEnum("activity_action", [
+export const activityActionEnum = pgEnum("activity_action", [
   "create",
   "delete",
   "update",
@@ -154,363 +140,58 @@ export const activityAction = pgEnum("activity_action", [
   "show",
 ]);
 
-export const addressType = pgEnum("entity_type", ["user", "property"]);
+export const addressEntityTypeEnum = pgEnum("address_entity_type", [
+  "user",
+  "property",
+]);
+
 export const stateEnum = pgEnum("state", [
   "federal",
   "punjab",
+  "sindh",
   "kpk",
-  "blochistan",
+  "balochistan",
+  "gilgit_baltistan",
+  "azad_kashmir",
 ]);
 
-export const roles = pgTable("roles", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  role: varchar("role").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+export const filerStatusEnum = pgEnum("filer_status", [
+  "filer",
+  "late_filer",
+  "non_filer",
+]);
 
-export const users = pgTable("users", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  name: varchar("name", { length: 255 }).notNull(),
-  email: varchar("email", { length: 255 }).notNull().unique(),
-  password: text("password").notNull(),
-  roleId: uuid("role_id")
-    .references(() => roles.id)
-    .notNull(),
-  avatarUrl: text("avatar_url"),
-  phone: varchar("phone", { length: 50 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+export const mutationStatusEnum = pgEnum("mutation_status", [
+  "not_applicable",
+  "pending",
+  "in_progress",
+  "completed",
+]);
 
-export const userBankAccounts = pgTable("user_bank_accounts", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  user_id: uuid("user_id")
-    .references(() => users.id, { onDelete: "cascade" })
-    .notNull(),
-  bankName: varchar("bankName", { length: 255 }).notNull(),
-  accountNumber: varchar("accountNumber", { length: 255 }).notNull().unique(),
-  iban: varchar("iban").notNull().unique(),
-  limit: integer("limit"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+export const possessionStatusEnum = pgEnum("possession_status", [
+  "not_applicable",
+  "pending",
+  "granted",
+  "disputed",
+]);
 
-export const properties = pgTable("properties", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  title: varchar("title", { length: 500 }).notNull(),
-  description: text("description"),
-  type: propertyTypeEnum("type").notNull().default("residential"),
-  status: propertyStatusEnum("status").notNull().default("available"),
-  price: numeric("price", { precision: 14, scale: 2 }).notNull(),
-  monthlyRent: numeric("monthly_rent", { precision: 14, scale: 2 }),
-  area: integer("area").notNull(),
-  bedrooms: integer("bedrooms"),
-  bathrooms: integer("bathrooms"),
-  yearBuilt: integer("year_built"),
-  parcelNumber: varchar("parcel_number", { length: 255 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+export const nocStatusEnum = pgEnum("noc_status", [
+  "not_required",
+  "file_under_process",
+  "approved",
+]);
 
-export const propertyFeatures = pgTable("property_features", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  propertyId: uuid("property_id")
-    .references(() => properties.id, { onDelete: "cascade" })
-    .notNull(),
-  feature: varchar("feature").notNull(),
-  value: varchar("value").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+export const milestoneTypeEnum = pgEnum("milestone_type", [
+  "booking",
+  "confirmation",
+  "monthly",
+  "balloting",
+  "allotment",
+  "other",
+]);
 
-export const propertyImages = pgTable("property_images", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  propertyId: uuid("property_id")
-    .references(() => properties.id, { onDelete: "cascade" })
-    .notNull(),
-  url: varchar("url").notNull(),
-  isPrimary: boolean("is_primary"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const addresses = pgTable("addresses", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  entityType: addressType().notNull(),
-  entityId: uuid("entityId").notNull(),
-  street: varchar("street", { length: 255 }).notNull(),
-  area: varchar("area", { length: 255 }),
-  city: varchar("city", { length: 255 }).notNull(),
-  state: stateEnum("state").notNull(),
-  zipCode: varchar("zip_code").notNull(),
-  country: text("country").default("pakistan"),
-  latitude: numeric("latitude", { precision: 10, scale: 6 }),
-  longitude: numeric("longitude", { precision: 10, scale: 6 }),
-  formattedAddress: text("formatted_address"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const propertyOwner = pgTable(
-  "property_owner",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    propertyId: uuid("property_id")
-      .references(() => properties.id, { onDelete: "cascade" })
-      .notNull(),
-    ownerId: uuid("owner_id").references(() => users.id),
-    ownershipPercentage: integer("ownership_percentage"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  },
-  (table) => [uniqueIndex("property_owner_property_idx").on(table.propertyId)],
-);
-
-export const transactions = pgTable("transactions", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  propertyId: uuid("property_id")
-    .references(() => properties.id, { onDelete: "cascade" })
-    .notNull(),
-  ownerId: uuid("owner_id").references(() => users.id),
-  tenentId: uuid("tenent_id").references(() => users.id),
-  status: transactionStatusEnum("status").notNull().default("pending"),
-  amount: integer("amount").notNull(),
-  notes: text("notes"),
-  paymentMethod: varchar("payment_method", { length: 50 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const leases = pgTable("leases", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  propertyId: uuid("property_id")
-    .references(() => properties.id, { onDelete: "cascade" })
-    .notNull(),
-  tenentId: uuid("tenent_id").references(() => users.id),
-  startDate: date("start_date"),
-  endDate: date("end_date"),
-  monthlyRent: integer("monthly_rent"),
-  deposit: integer("deposit"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const maintenance = pgTable("maintenance", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  propertyId: uuid("property_id")
-    .references(() => properties.id)
-    .notNull(),
-  title: varchar("title", { length: 255 }).notNull(),
-  description: text("description"),
-  priority: maintenancePriorityEnum("priority").notNull().default("medium"),
-  status: maintenanceStatusEnum("status").notNull().default("new"),
-  assignedTo: uuid("assigned_to").references(() => users.id),
-  estimatedCost: numeric("estimated_cost", { precision: 12, scale: 2 }),
-  actualCost: numeric("actual_cost", { precision: 12, scale: 2 }),
-  completedDate: date("completed_date"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const documents = pgTable("documents", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  entityType: documentType().notNull(),
-  entityId: uuid("entity_id").notNull(),
-  name: varchar("name", { length: 500 }).notNull(),
-  fileType: varchar("file_type", { length: 50 }).notNull(),
-  fileSize: integer("file_size"),
-  fileUrl: text("file_url"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const activity = pgTable("activities", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  action: activityAction().notNull(),
-  details: text("details"),
-  entityType: activityType().notNull(),
-  entityId: uuid("entity_id").notNull(),
-  doneBy: uuid("done_by").references(() => users.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const installmentPlanTemplates = pgTable("installment_plan_templates", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  name: varchar("name", { length: 255 }).notNull(),
-  description: text("description"),
-  frequency: installmentFrequencyEnum("frequency").notNull().default("monthly"),
-  termMonths: integer("term_months").notNull(),
-  downPaymentPercent: numeric("down_payment_percent", {
-    precision: 5,
-    scale: 2,
-  })
-    .notNull()
-    .default("20"),
-  interestRate: numeric("interest_rate", { precision: 5, scale: 2 })
-    .notNull()
-    .default("0"),
-  status: installmentPlanStatusEnum("status").notNull().default("draft"),
-  createdBy: uuid("created_by").references(() => users.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const propertyInstallmentPlans = pgTable("property_installment_plans", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  propertyId: uuid("property_id")
-    .references(() => properties.id, { onDelete: "cascade" })
-    .notNull(),
-  templateId: uuid("template_id")
-    .references(() => installmentPlanTemplates.id)
-    .notNull(),
-  price: numeric("price", { precision: 14, scale: 2 }).notNull(),
-  downPaymentAmount: numeric("down_payment_amount", {
-    precision: 14,
-    scale: 2,
-  }).notNull(),
-  installmentAmount: numeric("installment_amount", {
-    precision: 14,
-    scale: 2,
-  }).notNull(),
-  status: installmentPlanStatusEnum("status").notNull().default("draft"),
-  createdBy: uuid("created_by").references(() => users.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const propertyTaxAssignments = pgTable(
-  "property_tax_assignments",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    propertyId: uuid("property_id")
-      .references(() => properties.id, { onDelete: "cascade" })
-      .notNull(),
-    policyId: uuid("policy_id")
-      .references(() => taxPolicies.id, { onDelete: "cascade" })
-      .notNull(),
-    createdBy: uuid("created_by").references(() => users.id),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-  },
-  (table) => [
-    uniqueIndex("property_tax_assignments_property_policy_idx").on(
-      table.propertyId,
-      table.policyId,
-    ),
-    index("property_tax_assignments_property_idx").on(table.propertyId),
-  ],
-);
-
-export const purchaseRequests = pgTable("purchase_requests", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  propertyPlanId: uuid("property_plan_id")
-    .references(() => propertyInstallmentPlans.id)
-    .notNull(),
-  propertyId: uuid("property_id")
-    .references(() => properties.id)
-    .notNull(),
-  buyerId: uuid("buyer_id")
-    .references(() => users.id)
-    .notNull(),
-  status: purchaseRequestStatusEnum("status").notNull().default("pending"),
-  note: text("note"),
-  reviewedBy: uuid("reviewed_by").references(() => users.id),
-  reviewedAt: timestamp("reviewed_at"),
-  rejectionReason: text("rejection_reason"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const purchaseContracts = pgTable("purchase_contracts", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  requestId: uuid("request_id")
-    .references(() => purchaseRequests.id)
-    .notNull()
-    .unique(),
-  propertyPlanId: uuid("property_plan_id")
-    .references(() => propertyInstallmentPlans.id)
-    .notNull(),
-  propertyId: uuid("property_id")
-    .references(() => properties.id)
-    .notNull(),
-  buyerId: uuid("buyer_id")
-    .references(() => users.id)
-    .notNull(),
-  dealId: uuid("deal_id"),
-  status: purchaseContractStatusEnum("status").notNull().default("active"),
-  totalAmount: numeric("total_amount", { precision: 14, scale: 2 }).notNull(),
-  downPaymentAmount: numeric("down_payment_amount", {
-    precision: 14,
-    scale: 2,
-  }).notNull(),
-  installmentAmount: numeric("installment_amount", {
-    precision: 14,
-    scale: 2,
-  }).notNull(),
-  installmentCount: integer("installment_count").notNull(),
-  startDate: date("start_date").notNull(),
-  completedAt: timestamp("completed_at"),
-  cancelledAt: timestamp("cancelled_at"),
-  refundAmount: numeric("refund_amount", { precision: 14, scale: 2 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const scheduledInstallments = pgTable("scheduled_installments", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  contractId: uuid("contract_id")
-    .references(() => purchaseContracts.id, { onDelete: "cascade" })
-    .notNull(),
-  sequence: integer("sequence").notNull(),
-  dueDate: date("due_date").notNull(),
-  amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
-  paidAmount: numeric("paid_amount", { precision: 14, scale: 2 })
-    .notNull()
-    .default("0"),
-  status: scheduledInstallmentStatusEnum("status")
-    .notNull()
-    .default("scheduled"),
-  paidAt: timestamp("paid_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const paymentLedger = pgTable("payment_ledger", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  contractId: uuid("contract_id")
-    .references(() => purchaseContracts.id, { onDelete: "cascade" })
-    .notNull(),
-  installmentId: uuid("installment_id").references(
-    () => scheduledInstallments.id,
-  ),
-  amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
-  entryType: paymentEntryTypeEnum("entry_type").notNull().default("payment"),
-  status: paymentEntryStatusEnum("status").notNull().default("posted"),
-  paymentMethod: varchar("payment_method", { length: 50 }),
-  reference: varchar("reference", { length: 255 }),
-  notes: text("notes"),
-  recordedBy: uuid("recorded_by")
-    .references(() => users.id)
-    .notNull(),
-  reversedBy: uuid("reversed_by").references(() => users.id),
-  reversedAt: timestamp("reversed_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const installmentAuditLogs = pgTable("installment_audit_logs", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  entityType: varchar("entity_type", { length: 50 }).notNull(),
-  entityId: uuid("entity_id").notNull(),
-  action: varchar("action", { length: 50 }).notNull(),
-  actorId: uuid("actor_id").references(() => users.id),
-  details: jsonb("details"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-/**
- * Deals are the canonical lifecycle for every property agreement. The
- * legacy transaction and installment tables remain intact for compatibility;
- * new flows use these tables and can link back to legacy records by id.
- */
+// Canonical deal lifecycle (replaces the old separate transactions /
+// leases / installment-plan / purchase-request / purchase-contract tables).
 export const dealTypeEnum = pgEnum("deal_type", [
   "cash_sale",
   "fixed_lease",
@@ -538,15 +219,358 @@ export const dealPaymentStatusEnum = pgEnum("deal_payment_status", [
   "reversed",
 ]);
 
+export const dealPaymentScheduleStatusEnum = pgEnum(
+  "deal_payment_schedule_status",
+  ["scheduled", "partially_paid", "paid", "cancelled"],
+);
+
+// Who bears a given tax line on a deal.
+export const dealTaxPayerEnum = pgEnum("deal_tax_payer", [
+  "seller",
+  "counterparty",
+]);
+
 export const taxPolicyKindEnum = pgEnum("tax_policy_kind", [
   "percentage",
   "fixed_amount",
 ]);
 
-export const dealPaymentScheduleStatusEnum = pgEnum(
-  "deal_payment_schedule_status",
-  ["scheduled", "partially_paid", "paid", "cancelled"],
+// ─────────────────────────────────────────────────────────────────────────
+// Identity
+// ─────────────────────────────────────────────────────────────────────────
+
+export const roles = pgTable(
+  "roles",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    role: varchar("role").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("roles_role_idx").on(table.role)],
 );
+
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    name: varchar("name", { length: 255 }).notNull(),
+    email: varchar("email", { length: 255 }).unique(),
+    password: text("password").notNull(),
+    roleId: uuid("role_id")
+      .references(() => roles.id)
+      .notNull(),
+    avatarUrl: text("avatar_url"),
+    phone: varchar("phone", { length: 50 }).unique(),
+    cnic: varchar("cnic", { length: 15 }),
+    filerStatus: filerStatusEnum("filer_status").default("non_filer"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "users_email_or_phone_check",
+      sql`${table.email} IS NOT NULL OR ${table.phone} IS NOT NULL`,
+    ),
+  ],
+);
+
+export const userBankAccounts = pgTable("user_bank_accounts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  bankName: varchar("bank_name", { length: 255 }).notNull(),
+  accountNumber: varchar("account_number", { length: 255 }).notNull().unique(),
+  iban: varchar("iban").notNull().unique(),
+  creditLimit: integer("credit_limit"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Geo layer: City → Society (or generic locality) → Sector/Phase → Unit
+// This is the map data backing the public search/browse experience.
+// ─────────────────────────────────────────────────────────────────────────
+
+export const cities = pgTable(
+  "cities",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    name: varchar("name", { length: 100 }).notNull(),
+    slug: varchar("slug", { length: 120 }).notNull(),
+    province: stateEnum("province"),
+    centerPoint: geographyPoint("center_point"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("cities_slug_idx").on(table.slug)],
+);
+
+export const societies = pgTable(
+  "societies",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    cityId: uuid("city_id")
+      .references(() => cities.id, { onDelete: "restrict" })
+      .notNull(),
+    name: varchar("name", { length: 150 }).notNull(),
+    slug: varchar("slug", { length: 180 }).notNull(),
+    kind: societyKindEnum("kind").notNull().default("general_locality"),
+    developer: varchar("developer", { length: 150 }),
+    regulatoryAuthority: varchar("regulatory_authority", { length: 255 }),
+    boundary: geographyPolygon("boundary"),
+    description: text("description"),
+    coverImage: varchar("cover_image", { length: 255 }),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("societies_slug_idx").on(table.slug),
+    index("societies_city_idx").on(table.cityId),
+    index("societies_boundary_gix").using("gist", table.boundary),
+  ],
+);
+
+export const societySectors = pgTable(
+  "society_sectors",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    societyId: uuid("society_id")
+      .references(() => societies.id, { onDelete: "cascade" })
+      .notNull(),
+    name: varchar("name", { length: 100 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("society_sectors_society_name_idx").on(
+      table.societyId,
+      table.name,
+    ),
+  ],
+);
+
+export const units = pgTable(
+  "units",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sectorId: uuid("sector_id")
+      .references(() => societySectors.id, { onDelete: "cascade" })
+      .notNull(),
+    unitNumber: varchar("unit_number", { length: 50 }).notNull(),
+    streetNumber: varchar("street_number", { length: 50 }),
+    centroid: geographyPoint("centroid").notNull(),
+    areaValue: numeric("area_value", { precision: 10, scale: 2 }),
+    areaUnit: areaUnitEnum("area_unit"),
+    type: propertyTypeEnum("type"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("units_sector_unit_number_idx").on(
+      table.sectorId,
+      table.unitNumber,
+    ),
+  ],
+);
+
+// ─────────────────────────────────────────────────────────────────────────
+// Properties (listings)
+// ─────────────────────────────────────────────────────────────────────────
+
+export const properties = pgTable(
+  "properties",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    title: varchar("title", { length: 500 }).notNull(),
+    slug: varchar("slug", { length: 300 }).notNull(),
+    description: text("description"),
+    type: propertyTypeEnum("type").notNull().default("residential"),
+    status: propertyStatusEnum("status").notNull().default("available"),
+    listingPurpose: listingPurposeEnum("listing_purpose").notNull(),
+
+    // Geo placement: exact unit when known, else a fallback pin.
+    cityId: uuid("city_id").references(() => cities.id),
+    societyId: uuid("society_id").references(() => societies.id),
+    sectorId: uuid("sector_id").references(() => societySectors.id),
+    unitId: uuid("unit_id").references(() => units.id),
+    locationPoint: geographyPoint("location_point"),
+
+    price: numeric("price", { precision: 14, scale: 2 }).notNull(),
+    monthlyRent: numeric("monthly_rent", { precision: 14, scale: 2 }),
+
+    areaValue: numeric("area_value", { precision: 10, scale: 2 }).notNull(),
+    areaUnit: areaUnitEnum("area_unit").notNull(),
+    // Cached cross-unit value so mixed-unit listings can be sorted/filtered
+    // together without recomputing conversions on every query.
+    areaSqft: numeric("area_sqft", { precision: 12, scale: 2 }),
+
+    bedrooms: smallint("bedrooms"),
+    bathrooms: smallint("bathrooms"),
+    yearBuilt: integer("year_built"),
+    isBalloted: boolean("is_balloted").notNull().default(false),
+    fbrValuation: numeric("fbr_valuation", { precision: 14, scale: 2 }),
+    dcRate: numeric("dc_rate", { precision: 14, scale: 2 }),
+    parcelNumber: varchar("parcel_number", { length: 255 }),
+
+    viewsCount: integer("views_count").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("properties_slug_idx").on(table.slug),
+    index("properties_location_gix").using("gist", table.locationPoint),
+    index("properties_society_search_idx").on(
+      table.societyId,
+      table.listingPurpose,
+      table.status,
+    ),
+    index("properties_price_idx").on(table.price),
+  ],
+);
+
+export const propertyFeatures = pgTable(
+  "property_features",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    propertyId: uuid("property_id")
+      .references(() => properties.id, { onDelete: "cascade" })
+      .notNull(),
+    feature: varchar("feature").notNull(),
+    value: varchar("value").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("property_features_property_feature_idx").on(
+      table.propertyId,
+      table.feature,
+    ),
+  ],
+);
+
+export const propertyImages = pgTable(
+  "property_images",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    propertyId: uuid("property_id")
+      .references(() => properties.id, { onDelete: "cascade" })
+      .notNull(),
+    url: varchar("url").notNull(),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    sortOrder: smallint("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("property_images_property_idx").on(table.propertyId)],
+);
+
+export const addresses = pgTable(
+  "addresses",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    entityType: addressEntityTypeEnum("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    street: varchar("street", { length: 255 }).notNull(),
+    area: varchar("area", { length: 255 }),
+    cityId: uuid("city_id").references(() => cities.id),
+    state: stateEnum("state").notNull(),
+    zipCode: varchar("zip_code").notNull(),
+    country: text("country").default("pakistan"),
+    latitude: numeric("latitude", { precision: 10, scale: 6 }),
+    longitude: numeric("longitude", { precision: 10, scale: 6 }),
+    formattedAddress: text("formatted_address"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("addresses_entity_idx").on(table.entityType, table.entityId),
+  ],
+);
+
+export const propertyOwner = pgTable(
+  "property_owner",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    propertyId: uuid("property_id")
+      .references(() => properties.id, { onDelete: "cascade" })
+      .notNull(),
+    ownerId: uuid("owner_id").references(() => users.id),
+    ownershipPercentage: integer("ownership_percentage"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // A property can have several co-owners, but not the same owner twice.
+    uniqueIndex("property_owner_property_owner_idx").on(
+      table.propertyId,
+      table.ownerId,
+    ),
+    check(
+      "property_owner_percentage_range_check",
+      sql`${table.ownershipPercentage} IS NULL OR ${table.ownershipPercentage} BETWEEN 0 AND 100`,
+    ),
+  ],
+);
+
+export const maintenance = pgTable("maintenance", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  propertyId: uuid("property_id")
+    .references(() => properties.id, { onDelete: "cascade" })
+    .notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  priority: maintenancePriorityEnum("priority").notNull().default("medium"),
+  status: maintenanceStatusEnum("status").notNull().default("new"),
+  assignedTo: uuid("assigned_to").references(() => users.id),
+  estimatedCost: numeric("estimated_cost", { precision: 12, scale: 2 }),
+  actualCost: numeric("actual_cost", { precision: 12, scale: 2 }),
+  completedDate: date("completed_date"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Generic file attachments for users / properties / maintenance / deals.
+export const documents = pgTable(
+  "documents",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    entityType: documentEntityTypeEnum("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    name: varchar("name", { length: 500 }).notNull(),
+    fileType: varchar("file_type", { length: 50 }).notNull(),
+    fileSize: integer("file_size"),
+    fileUrl: text("file_url"),
+    uploadedBy: uuid("uploaded_by").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("documents_entity_idx").on(table.entityType, table.entityId),
+  ],
+);
+
+// Generic audit trail for every domain above, including deals — replaces
+// the old deal-specific and installment-specific audit-log tables.
+export const activity = pgTable(
+  "activities",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    action: activityActionEnum("action").notNull(),
+    details: jsonb("details"),
+    entityType: activityEntityTypeEnum("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    doneBy: uuid("done_by").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("activities_entity_idx").on(table.entityType, table.entityId),
+  ],
+);
+
+// ─────────────────────────────────────────────────────────────────────────
+// Deals — the single canonical lifecycle for every sale, lease, rental or
+// installment-purchase agreement on a property.
+// ─────────────────────────────────────────────────────────────────────────
 
 export const deals = pgTable(
   "deals",
@@ -565,12 +589,21 @@ export const deals = pgTable(
     startsOn: date("starts_on"),
     endsOn: date("ends_on"),
     totalAmount: numeric("total_amount", { precision: 14, scale: 2 }),
+    earnestAmount: numeric("earnest_amount", { precision: 14, scale: 2 }),
+    tokenPaidAt: timestamp("token_paid_at"),
     taxAmount: numeric("tax_amount", { precision: 14, scale: 2 })
       .notNull()
       .default("0"),
-    taxPayer: varchar("tax_payer", { length: 30 })
+    taxPayer: dealTaxPayerEnum("tax_payer").notNull().default("counterparty"),
+    nocStatus: nocStatusEnum("noc_status").notNull().default("not_required"),
+    mutationStatus: mutationStatusEnum("mutation_status")
       .notNull()
-      .default("counterparty"),
+      .default("not_applicable"),
+    mutationCompletedAt: timestamp("mutation_completed_at"),
+    possessionStatus: possessionStatusEnum("possession_status")
+      .notNull()
+      .default("not_applicable"),
+    possessionGrantedAt: timestamp("possession_granted_at"),
     snapshot: jsonb("snapshot").notNull(),
     createdBy: uuid("created_by")
       .references(() => users.id)
@@ -595,7 +628,7 @@ export const dealSaleDetails = pgTable("deal_sale_details", {
   dealId: uuid("deal_id")
     .references(() => deals.id, { onDelete: "cascade" })
     .primaryKey(),
-  paymentMethod: varchar("payment_method", { length: 50 }),
+  paymentMethod: paymentMethodEnum("payment_method"),
   dueOn: date("due_on"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -608,8 +641,11 @@ export const dealLeaseDetails = pgTable("deal_lease_details", {
   depositAmount: numeric("deposit_amount", { precision: 14, scale: 2 })
     .notNull()
     .default("0"),
+  advanceRentMonths: smallint("advance_rent_months").notNull().default(0),
   frequency: dealFrequencyEnum("frequency").notNull().default("monthly"),
   fixedTerm: boolean("fixed_term").notNull().default(true),
+  noticePeriodDays: integer("notice_period_days"),
+  agreementRegisteredAt: timestamp("agreement_registered_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -627,9 +663,48 @@ export const dealInstallmentDetails = pgTable("deal_installment_details", {
   }).notNull(),
   installmentCount: integer("installment_count").notNull(),
   frequency: dealFrequencyEnum("frequency").notNull().default("monthly"),
-  legacyContractId: uuid("legacy_contract_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const dealPaymentSchedules = pgTable(
+  "deal_payment_schedules",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    dealId: uuid("deal_id")
+      .references(() => deals.id, { onDelete: "cascade" })
+      .notNull(),
+    sequence: integer("sequence").notNull(),
+    dueOn: date("due_on"),
+    milestoneType: milestoneTypeEnum("milestone_type").notNull().default("monthly"),
+    eventDate: date("event_date"),
+    principalAmount: numeric("principal_amount", {
+      precision: 14,
+      scale: 2,
+    }).notNull(),
+    taxAmount: numeric("tax_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    // Denormalized running totals for fast schedule-list rendering; the
+    // source of truth is the sum of `deal_payment_allocations` rows.
+    paidPrincipal: numeric("paid_principal", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    paidTax: numeric("paid_tax", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    status: dealPaymentScheduleStatusEnum("status")
+      .notNull()
+      .default("scheduled"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("deal_payment_schedules_deal_sequence_idx").on(
+      table.dealId,
+      table.sequence,
+    ),
+    index("deal_payment_schedules_deal_idx").on(table.dealId),
+  ],
+);
 
 export const dealPayments = pgTable(
   "deal_payments",
@@ -638,7 +713,6 @@ export const dealPayments = pgTable(
     dealId: uuid("deal_id")
       .references(() => deals.id, { onDelete: "cascade" })
       .notNull(),
-    legacyPaymentId: uuid("legacy_payment_id"),
     amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
     principalAmount: numeric("principal_amount", {
       precision: 14,
@@ -650,7 +724,7 @@ export const dealPayments = pgTable(
       .notNull()
       .default("0"),
     status: dealPaymentStatusEnum("status").notNull().default("posted"),
-    paymentMethod: varchar("payment_method", { length: 50 }),
+    paymentMethod: paymentMethodEnum("payment_method"),
     reference: varchar("reference", { length: 255 }),
     notes: text("notes"),
     recordedBy: uuid("recorded_by")
@@ -660,24 +734,41 @@ export const dealPayments = pgTable(
     reversedAt: timestamp("reversed_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [index("deal_payments_deal_idx").on(table.dealId)],
+  (table) => [
+    index("deal_payments_deal_idx").on(table.dealId),
+    check(
+      "deal_payments_amount_breakdown_check",
+      sql`${table.principalAmount} + ${table.taxAmount} = ${table.amount}`,
+    ),
+  ],
 );
 
-export const dealDocuments = pgTable(
-  "deal_documents",
+export const dealPaymentAllocations = pgTable(
+  "deal_payment_allocations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    dealId: uuid("deal_id")
-      .references(() => deals.id, { onDelete: "cascade" })
+    paymentId: uuid("payment_id")
+      .references(() => dealPayments.id, { onDelete: "cascade" })
       .notNull(),
-    name: varchar("name", { length: 500 }).notNull(),
-    fileType: varchar("file_type", { length: 100 }).notNull(),
-    fileSize: integer("file_size"),
-    fileUrl: text("file_url"),
-    uploadedBy: uuid("uploaded_by").references(() => users.id),
+    scheduleId: uuid("schedule_id")
+      .references(() => dealPaymentSchedules.id, { onDelete: "cascade" })
+      .notNull(),
+    principalAmount: numeric("principal_amount", {
+      precision: 14,
+      scale: 2,
+    }).notNull(),
+    taxAmount: numeric("tax_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [index("deal_documents_deal_idx").on(table.dealId)],
+  (table) => [
+    uniqueIndex("deal_payment_allocations_payment_schedule_idx").on(
+      table.paymentId,
+      table.scheduleId,
+    ),
+    index("deal_payment_allocations_payment_idx").on(table.paymentId),
+  ],
 );
 
 export const dealAcceptances = pgTable("deal_acceptances", {
@@ -721,21 +812,6 @@ export const dealSettlements = pgTable("deal_settlements", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const dealAuditLogs = pgTable(
-  "deal_audit_logs",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    dealId: uuid("deal_id")
-      .references(() => deals.id, { onDelete: "cascade" })
-      .notNull(),
-    action: varchar("action", { length: 50 }).notNull(),
-    actorId: uuid("actor_id").references(() => users.id),
-    details: jsonb("details"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-  },
-  (table) => [index("deal_audit_deal_idx").on(table.dealId)],
-);
-
 export const taxPolicies = pgTable(
   "tax_policies",
   {
@@ -743,6 +819,9 @@ export const taxPolicies = pgTable(
     name: varchar("name", { length: 255 }).notNull().unique(),
     kind: taxPolicyKindEnum("kind").notNull(),
     value: numeric("value", { precision: 14, scale: 2 }).notNull(),
+    minValue: numeric("min_value", { precision: 14, scale: 2 }),
+    maxValue: numeric("max_value", { precision: 14, scale: 2 }),
+    filerStatus: filerStatusEnum("filer_status"),
     appliesTo: dealTypeEnum("applies_to").array().notNull(),
     active: boolean("active").notNull().default(true),
     effectiveStart: date("effective_start"),
@@ -766,6 +845,28 @@ export const taxPolicies = pgTable(
   ],
 );
 
+export const propertyTaxAssignments = pgTable(
+  "property_tax_assignments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    propertyId: uuid("property_id")
+      .references(() => properties.id, { onDelete: "cascade" })
+      .notNull(),
+    policyId: uuid("policy_id")
+      .references(() => taxPolicies.id, { onDelete: "cascade" })
+      .notNull(),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("property_tax_assignments_property_policy_idx").on(
+      table.propertyId,
+      table.policyId,
+    ),
+    index("property_tax_assignments_property_idx").on(table.propertyId),
+  ],
+);
+
 export const dealTaxSnapshots = pgTable(
   "deal_tax_snapshots",
   {
@@ -782,6 +883,7 @@ export const dealTaxSnapshots = pgTable(
       precision: 14,
       scale: 2,
     }).notNull(),
+    filerStatusUsed: filerStatusEnum("filer_status_used"),
     policyCode: varchar("policy_code", { length: 100 }),
     authority: varchar("authority", { length: 255 }),
     baseAmount: numeric("base_amount", { precision: 14, scale: 2 }).notNull(),
@@ -795,69 +897,5 @@ export const dealTaxSnapshots = pgTable(
       table.policyId,
     ),
     index("deal_tax_snapshots_deal_idx").on(table.dealId),
-  ],
-);
-
-export const dealPaymentSchedules = pgTable(
-  "deal_payment_schedules",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    dealId: uuid("deal_id")
-      .references(() => deals.id, { onDelete: "cascade" })
-      .notNull(),
-    sequence: integer("sequence").notNull(),
-    dueOn: date("due_on"),
-    principalAmount: numeric("principal_amount", {
-      precision: 14,
-      scale: 2,
-    }).notNull(),
-    taxAmount: numeric("tax_amount", { precision: 14, scale: 2 })
-      .notNull()
-      .default("0"),
-    paidPrincipal: numeric("paid_principal", { precision: 14, scale: 2 })
-      .notNull()
-      .default("0"),
-    paidTax: numeric("paid_tax", { precision: 14, scale: 2 })
-      .notNull()
-      .default("0"),
-    status: dealPaymentScheduleStatusEnum("status")
-      .notNull()
-      .default("scheduled"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-  },
-  (table) => [
-    uniqueIndex("deal_payment_schedules_deal_sequence_idx").on(
-      table.dealId,
-      table.sequence,
-    ),
-    index("deal_payment_schedules_deal_idx").on(table.dealId),
-  ],
-);
-
-export const dealPaymentAllocations = pgTable(
-  "deal_payment_allocations",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    paymentId: uuid("payment_id")
-      .references(() => dealPayments.id, { onDelete: "cascade" })
-      .notNull(),
-    scheduleId: uuid("schedule_id")
-      .references(() => dealPaymentSchedules.id, { onDelete: "cascade" })
-      .notNull(),
-    principalAmount: numeric("principal_amount", {
-      precision: 14,
-      scale: 2,
-    }).notNull(),
-    taxAmount: numeric("tax_amount", { precision: 14, scale: 2 })
-      .notNull()
-      .default("0"),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-  },
-  (table) => [
-    uniqueIndex("deal_payment_allocations_payment_schedule_idx").on(
-      table.paymentId,
-      table.scheduleId,
-    ),
-    index("deal_payment_allocations_payment_idx").on(table.paymentId),
   ],
 );

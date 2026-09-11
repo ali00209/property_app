@@ -38,6 +38,7 @@ const entityTypeLabel: Record<string, string> = {
   leases: "Leases",
   maintenance: "Maintenance",
   documents: "Documents",
+  units: "Units",
 };
 
 export function HistoryList({ activities }: { activities: ActivityItem[] }) {
@@ -50,7 +51,7 @@ export function HistoryList({ activities }: { activities: ActivityItem[] }) {
       activity.action.toLowerCase().includes(term) ||
       activity.entityType.toLowerCase().includes(term) ||
       (activity.entityLabel ?? "").toLowerCase().includes(term) ||
-      (activity.details ?? "").toLowerCase().includes(term) ||
+      (JSON.stringify(activity.details ?? "").toLowerCase().includes(term)) ||
       (activity.doneByName ?? "").toLowerCase().includes(term)
     );
   });
@@ -116,7 +117,7 @@ export function HistoryList({ activities }: { activities: ActivityItem[] }) {
                 </TableCell>
                 <TableCell>
                   <Text type="label" color="secondary">
-                    {activity.details ?? "—"}
+                    {activity.details ? JSON.stringify(activity.details) : "—"}
                   </Text>
                 </TableCell>
                 <TableCell>

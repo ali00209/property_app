@@ -4,10 +4,10 @@ import {
   listProperties,
 } from "@/features/property/db-queries";
 import { getMapPayload } from "@/features/map/db-queries";
+import { getGeoTree } from "@/features/geo/db-queries";
 import { MapTab } from "@/features/property/map";
 import { PropertyList } from "@/features/property/property-list";
-import { Stack, TabList, Tab, Text, Heading } from "@astryxdesign/core";
-import { props } from "@stylexjs/stylex";
+import { Stack } from "@astryxdesign/core";
 
 export default async function PropertiesPage() {
   const user = await requireRole(
@@ -19,10 +19,11 @@ export default async function PropertiesPage() {
     "property_manager",
     "tenant",
   );
-  const [properties, owners, mapPayload] = await Promise.all([
+  const [properties, owners, mapPayload, geo] = await Promise.all([
     listProperties(user),
     getOwnerOptions(),
     getMapPayload(user),
+    getGeoTree(),
   ]);
 
   return (
@@ -30,6 +31,7 @@ export default async function PropertiesPage() {
       <PropertyList
         properties={properties}
         owners={owners}
+        geo={geo}
         userRole={"admin"}
         canManage={true}
       />

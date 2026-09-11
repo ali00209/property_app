@@ -1,15 +1,13 @@
 import "server-only";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db, schema } from "@/db";
 import type { DbOrTransaction } from "@/lib/activity";
 import type {
-  Property,
   PropertyDetail,
   SessionUser,
   User,
-  UUID,
 } from "@/types";
 
 export async function getPropertyRow(
@@ -32,36 +30,33 @@ export async function getPropertyRow(
       ),
     );
 
+  let cityName: string | null = null;
+  if (address?.cityId) {
+    const [cityRow] = await database
+      .select({ name: schema.cities.name })
+      .from(schema.cities)
+      .where(eq(schema.cities.id, address.cityId));
+    cityName = cityRow?.name ?? null;
+  }
+
   const features = await database
     .select()
     .from(schema.propertyFeatures)
     .where(eq(schema.propertyFeatures.propertyId, id));
 
-  const [owner] = await database
-    .select()
+  const ownerRows = await database
+    .select({
+      owner: schema.propertyOwner,
+      name: schema.users.name,
+      email: schema.users.email,
+      role: schema.roles.role,
+      roleId: schema.users.roleId,
+    })
     .from(schema.propertyOwner)
-    .where(eq(schema.propertyOwner.propertyId, id));
-  let ownerUser: {
-    id: string
-    name: string
-    email: string
-    role: string
-    roleId: string
-  } | null = null;
-  if (owner?.ownerId) {
-    const [row] = await database
-      .select({
-        id: schema.users.id,
-        name: schema.users.name,
-        email: schema.users.email,
-        role: schema.roles.role,
-        roleId: schema.users.roleId,
-      })
-      .from(schema.users)
-      .innerJoin(schema.roles, eq(schema.users.roleId, schema.roles.id))
-      .where(eq(schema.users.id, owner.ownerId));
-    ownerUser = row;
-  }
+    .leftJoin(schema.users, eq(schema.users.id, schema.propertyOwner.ownerId))
+    .leftJoin(schema.roles, eq(schema.roles.id, schema.users.roleId))
+    .where(eq(schema.propertyOwner.propertyId, id))
+    .orderBy(asc(schema.propertyOwner.ownershipPercentage));
 
   const images = await database
     .select()
@@ -78,11 +73,6 @@ export async function getPropertyRow(
       ),
     );
 
-  const transactions = await database
-    .select()
-    .from(schema.transactions)
-    .where(eq(schema.transactions.propertyId, id));
-
   const iso = (value: Date | null | undefined): string | undefined =>
     value instanceof Date ? value.toISOString() : undefined;
 
@@ -93,6 +83,7 @@ export async function getPropertyRow(
     address: address
       ? {
           ...address,
+          city: cityName,
           createdAt: iso(address.createdAt),
           updatedAt: iso(address.updatedAt),
         }
@@ -102,31 +93,27 @@ export async function getPropertyRow(
       createdAt: iso(feature.createdAt),
       updatedAt: iso(feature.updatedAt),
     })),
-    owner: owner
-      ? {
-          ...owner,
-          createdAt: iso(owner.createdAt),
-          updatedAt: iso(owner.updatedAt),
-          user: ownerUser ? (ownerUser as unknown as User) : null,
-        }
-      : null,
+    owners: ownerRows.map(({ owner, name, email, role, roleId }) => ({
+      ...owner,
+      createdAt: iso(owner.createdAt),
+      updatedAt: iso(owner.updatedAt),
+      user: name
+        ? ({
+            id: owner.ownerId,
+            name,
+            email,
+            role,
+            roleId,
+          } as unknown as User)
+        : null,
+    })),
     images: images.map((image) => ({
       ...image,
       createdAt: iso(image.createdAt),
-      updatedAt: iso(image.updatedAt),
     })),
     documents: documents.map((document) => ({
       ...document,
       createdAt: iso(document.createdAt),
-    })),
-    transactions: transactions.map((transaction) => ({
-      ...transaction,
-      ownerId: transaction.ownerId ?? ("" as UUID),
-      tenentId: transaction.tenentId ?? ("" as UUID),
-      notes: transaction.notes ?? "",
-      paymentMethod: transaction.paymentMethod ?? "",
-      createdAt: iso(transaction.createdAt),
-      updatedAt: iso(transaction.updatedAt),
     })),
   } satisfies PropertyDetail;
 }

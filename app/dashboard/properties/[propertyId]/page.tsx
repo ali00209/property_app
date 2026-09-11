@@ -10,11 +10,7 @@ import type { DealStatus, Property } from "@/types";
 
 const statusVariant: Record<Property["status"], BadgeVariant> = {
   available: "green",
-  leased: "purple",
   off_market: "blue",
-  rented: "cyan",
-  sold: "red",
-  under_contract: "yellow",
   archived: "neutral",
   maintenance: "teal",
   occupied: "orange",
@@ -91,7 +87,13 @@ export default async function PropertyDetailPage({
             </Text>
           ) : null}
           <Text type="body">Type: {property.type.replace("_", " ")}</Text>
-          <Text type="body">Area: {property.area} sq ft</Text>
+          <Text type="body">
+            Listed for: {property.listingPurpose === "sale" ? "Sale" : "Rent"}
+          </Text>
+          <Text type="body">
+            Area: {property.areaValue} {property.areaUnit}
+            {property.areaSqft ? ` (${Number(property.areaSqft).toLocaleString()} sq ft)` : ""}
+          </Text>
           {property.bedrooms != null ? (
             <Text type="body">Bedrooms: {property.bedrooms}</Text>
           ) : null}
@@ -120,14 +122,21 @@ export default async function PropertyDetailPage({
         </Card>
       ) : null}
 
-      {property.owner?.user ? (
+      {property.owners.length > 0 ? (
         <Card>
           <Stack gap={2}>
-            <Heading level={3}>Owner</Heading>
-            <Text type="body">{property.owner.user.name}</Text>
-            <Text type="body" color="secondary">
-              {property.owner.user.email}
-            </Text>
+            <Heading level={3}>Owners</Heading>
+            {property.owners.map((owner) => (
+              <Stack key={owner.id} gap={1}>
+                <Text type="body">{owner.user?.name ?? "Owner"}</Text>
+                <Text type="body" color="secondary">
+                  {owner.user?.email ?? "—"}
+                </Text>
+                <Text type="body" color="secondary">
+                  {owner.ownershipPercentage ?? 0}% ownership
+                </Text>
+              </Stack>
+            ))}
           </Stack>
         </Card>
       ) : null}

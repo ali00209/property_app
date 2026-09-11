@@ -28,8 +28,8 @@ export function AuthForm({ isLogin }: { isLogin: boolean }) {
   const form = useForm<FormValues>({
     resolver: zodResolver(isLogin ? loginSchema : registerSchema),
     defaultValues: isLogin
-      ? { email: "admin@gmail.com", password: "password" }
-      : { name: "", email: "", password: "" },
+      ? { identifier: "", password: "" }
+      : { name: "", identifier: "", password: "" },
   });
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -43,7 +43,9 @@ export function AuthForm({ isLogin }: { isLogin: boolean }) {
       if (!result.ok) {
         setErrorMessage(result.error.message);
         if (result.error.fieldErrors) {
-          for (const [key, messages] of Object.entries(result.error.fieldErrors)) {
+          for (const [key, messages] of Object.entries(
+            result.error.fieldErrors,
+          )) {
             if (messages[0]) {
               form.setError(key as never, {
                 type: "server",
@@ -59,6 +61,10 @@ export function AuthForm({ isLogin }: { isLogin: boolean }) {
         result.data.role === "client" ? "/dashboard/properties" : "/dashboard";
       router.push(destination);
       router.refresh();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "An unexpected error occurred.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -74,7 +80,13 @@ export function AuthForm({ isLogin }: { isLogin: boolean }) {
           {!isLogin ? (
             <TextField form={form} name="name" label="Full name" isRequired />
           ) : null}
-          <TextField form={form} name="email" label="Email" type="email" isRequired />
+          <TextField
+            form={form}
+            name="identifier"
+            label="Email or Phone"
+            placeholder="you@example.com or 03XXXXXXXXX"
+            isRequired
+          />
           <TextField
             form={form}
             name="password"
@@ -83,7 +95,11 @@ export function AuthForm({ isLogin }: { isLogin: boolean }) {
             isRequired
           />
           {errorMessage ? (
-            <Banner status="error" title="Authentication failed" description={errorMessage} />
+            <Banner
+              status="error"
+              title="Authentication failed"
+              description={errorMessage}
+            />
           ) : null}
           <Button
             width="100%"

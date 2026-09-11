@@ -6,14 +6,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Map as LeafletMap, LayerGroup } from "leaflet";
 import { Button, Stack, Text } from "@astryxdesign/core";
 import { currency } from "@/lib/utils";
-import type { MapPayload, MapProperty } from "@/types";
+import type { MapArea, MapPayload, MapProperty } from "@/types";
 
 const STATUS_COLOR: Record<string, string> = {
   available: "#16a34a",
-  under_contract: "#ca8a04",
-  sold: "#dc2626",
-  leased: "#7c3aed",
-  rented: "#0891b2",
   off_market: "#2563eb",
   occupied: "#ea580c",
   vacant: "#64748b",
@@ -27,6 +23,16 @@ type Drill = {
   level: "cities" | "areas" | "properties"
   city: string | null
   area: string | null
+  areaId: string | null
+}
+
+function polygonLatLngsFromWkt(wkt: string): [number, number][] {
+  const match = wkt.match(/\(\(([^)]+)\)\)/)
+  if (!match) return []
+  return match[1].split(",").map((pair) => {
+    const [lng, lat] = pair.trim().split(/\s+/).map(Number)
+    return [lat, lng] as [number, number]
+  })
 }
 
 export function MapTab({
@@ -43,6 +49,7 @@ export function MapTab({
     level: "cities",
     city: null,
     area: null,
+    areaId: null,
   })
 
   useEffect(() => {
@@ -114,6 +121,16 @@ export function MapTab({
     })
   }
 
+  function unitIcon(L: typeof import("leaflet"), label: string) {
+    const html = `<div style="display:flex;align-items:center;gap:3px;transform:translate(-6px,-100%)"><div style="width:11px;height:11px;border-radius:50%;background:#0d9488;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45)"></div><span style="font-size:10px;font-weight:600;line-height:1.4;color:#0f172a;background:#fff;border:1px solid #cbd5e1;border-radius:4px;padding:0 4px;white-space:nowrap">${label}</span></div>`
+    return L.divIcon({
+      className: "",
+      html,
+      iconSize: [label.length * 8 + 16, 22],
+      iconAnchor: [0, 0],
+    })
+  }
+
   useEffect(() => {
     const map = mapRef.current
     const L = modRef.current
@@ -121,7 +138,7 @@ export function MapTab({
     clearGroups(["cities", "areas", "properties"])
     if (!payload.cities.length) return
 
-    const { level, city, area } = drill
+    const { level, city } = drill
 
     if (level === "cities") {
       for (const c of payload.cities) {
@@ -132,7 +149,7 @@ export function MapTab({
         marker.bindTooltip(c.city, { direction: "top", offset: [0, -12] })
         marker.on("click", () => {
           map.flyTo([c.lat, c.lng], 11)
-          setDrill({ level: "areas", city: c.city, area: null })
+          setDrill({ level: "areas", city: c.city, area: null, areaId: null })
         })
       }
       return
@@ -140,28 +157,58 @@ export function MapTab({
 
     if (level === "areas") {
       const areas = payload.areas.filter((a) => a.city === city)
-      for (const a of areas) {
-        const marker = L.marker([a.lat, a.lng], {
-          icon: dotIcon(L, "#9333ea", 16),
-          title: `${a.area} (${a.count})`,
-        }).addTo(groupsRef.current.areas)
-        marker.bindTooltip(`${a.area} · ${a.count}`, { direction: "top", offset: [0, -10] })
-        marker.on("click", () => {
-          map.flyTo([a.lat, a.lng], 15)
-          setDrill({ level: "properties", city: city, area: a.area })
-        })
+      const bounds: Array<[number, number]> = []
+      const unitsFor = (a: MapArea) => {
+        const areaId = a.id
+        map.flyTo([a.lat, a.lng], 15)
+        setDrill({ level: "properties", city: city, area: a.area, areaId })
       }
-      if (areas.length) {
-        map.fitBounds(
-          L.latLngBounds(areas.map((a) => [a.lat, a.lng] as [number, number])),
-          { padding: [40, 40] },
+      for (const a of areas) {
+        const latlngs = a.boundary ? polygonLatLngsFromWkt(a.boundary) : []
+        if (latlngs.length >= 3) {
+          const poly = L.polygon(latlngs, {
+            color: "#9333ea",
+            weight: 2,
+            fillOpacity: 0.18,
+          }).addTo(groupsRef.current.areas)
+          poly.bindTooltip(`${a.area} · ${a.count}`, { sticky: true })
+          poly.on("click", () => unitsFor(a))
+          const label = L.marker(poly.getBounds().getCenter(), {
+            icon: dotIcon(L, "#9333ea", 16),
+          }).addTo(groupsRef.current.areas)
+          label.bindTooltip(`${a.area} · ${a.count}`, { direction: "top", offset: [0, -10] })
+          label.on("click", () => unitsFor(a))
+          bounds.push(...latlngs)
+        } else {
+          const marker = L.marker([a.lat, a.lng], {
+            icon: dotIcon(L, "#9333ea", 16),
+            title: `${a.area} (${a.count})`,
+          }).addTo(groupsRef.current.areas)
+          marker.bindTooltip(`${a.area} · ${a.count}`, { direction: "top", offset: [0, -10] })
+          marker.on("click", () => unitsFor(a))
+          bounds.push([a.lat, a.lng])
+        }
+      }
+      const areaIds = new Set(areas.map((a) => a.id))
+      for (const p of payload.units) {
+        if (!areaIds.has(p.societyId)) continue
+        const icon = unitIcon(L, p.unitNumber)
+        const marker = L.marker([p.lat, p.lng], { icon }).addTo(
+          groupsRef.current.areas,
         )
+        marker.bindTooltip(p.unitNumber, { direction: "top", offset: [0, -6] })
+        bounds.push([p.lat, p.lng])
+      }
+      if (bounds.length) {
+        map.fitBounds(L.latLngBounds(bounds), { padding: [40, 40] })
       }
       return
     }
 
     const props = payload.properties.filter(
-      (p) => p.city === city && (area ? p.area === area : true),
+      (p) =>
+        p.city === city &&
+        (drill.areaId ? p.societyId === drill.areaId : true),
     )
 
     for (const p of props) {
@@ -201,7 +248,7 @@ export function MapTab({
   const props = payload.properties.filter(
     (p) =>
       p.city === drill.city &&
-      (drill.area ? p.area === drill.area : true),
+      (drill.areaId ? p.societyId === drill.areaId : true),
   )
 
   return (
@@ -230,7 +277,7 @@ export function MapTab({
               size="sm"
               variant="ghost"
               onClick={() =>
-                setDrill({ level: "areas", city: drill.city, area: null })
+                setDrill({ level: "areas", city: drill.city, area: null, areaId: null })
               }
             />
           ) : null}
@@ -240,7 +287,7 @@ export function MapTab({
               size="sm"
               variant="ghost"
               onClick={() =>
-                setDrill({ level: "cities", city: null, area: null })
+                setDrill({ level: "cities", city: null, area: null, areaId: null })
               }
             />
           ) : null}

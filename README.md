@@ -1,36 +1,177 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Property Management Platform
+
+A full-featured property management system for managing real estate portfolios, deals, leases, installments, and maintenance workflows.
+
+## Tech Stack
+
+- **Framework:** Next.js 16 (App Router)
+- **Language:** TypeScript
+- **Database:** PostgreSQL with Drizzle ORM
+- **Auth:** JWT sessions (cookie-based) with bcrypt password hashing
+- **UI:** Astryx Design System + Tailwind CSS + Lucide icons
+- **Maps:** Leaflet with Leaflet DistortableImage
+- **Validation:** Zod + React Hook Form
+
+## Features
+
+- **Property Management** — CRUD for properties with addresses, features, images, and ownership tracking
+- **Deal Lifecycle** — Cash sales, fixed leases, periodic rent, and installment purchases with tax policy support
+- **Installment Plans** — Template-based installment plans with scheduled payments and allocation tracking
+- **Maintenance** — Request tracking with priority, status, cost estimation, and staff assignment
+- **Transactions** — Payment recording with principal/tax split, reversals, and ledger history
+- **Tax Policies** — Percentage or fixed-amount tax rules with effective date ranges and deal-type applicability
+- **Activity Log** — Audit trail for all entity changes
+- **Role-Based Access** — Admin, Property Manager, Accountant, Owner, Tenant, Client, Maintenance Staff
+- **Map View** — Leaflet-based property visualization with area/sector management
+- **File Uploads** — Document and image upload support
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 18+
+- PostgreSQL 14+
+
+### Installation
+
+```bash
+# Clone the repository
+git clone <repo-url>
+cd property_app
+
+# Install dependencies
+npm install
+
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your database credentials and secrets
+```
+
+### Database Setup
+
+```bash
+# Generate and run migrations
+npx drizzle-kit generate
+npx drizzle-kit migrate
+
+# (Optional) Seed the database with sample data
+npx tsx scripts/seed.ts
+```
+
+### Run Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Build for Production
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+npm start
+```
 
-## Learn More
+## Environment Variables
 
-To learn more about Next.js, take a look at the following resources:
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATABASE_URL` | PostgreSQL connection string | Required |
+| `JWT_SECRET` | Secret for signing session tokens | `dev-only-change-me` |
+| `JWT_EXPIRE_IN` | Token expiry (e.g., `1d`, `7d`, `24h`) | `1d` |
+| `UPLOAD_DIR` | Directory for file uploads | `uploads` |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Available Scripts
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start development server with hot reload |
+| `npm run build` | Build for production |
+| `npm start` | Start production server |
+| `npm run lint` | Run ESLint |
+| `npx drizzle-kit generate` | Generate SQL migrations from schema |
+| `npx drizzle-kit migrate` | Apply migrations to database |
+| `npx drizzle-kit studio` | Open Drizzle Studio (database GUI) |
+| `npx tsx scripts/seed.ts` | Seed database with sample data |
 
-## Deploy on Vercel
+## Project Structure
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```
+property_app/
+├── app/
+│   ├── (auth)/              # Login and registration pages
+│   ├── api/uploads/         # File upload endpoints
+│   ├── dashboard/           # Protected dashboard pages
+│   │   ├── properties/      # Property listing and detail
+│   │   ├── deals/           # Deal management
+│   │   ├── transactions/    # Transaction history
+│   │   ├── installments/    # Installment plan management
+│   │   ├── maintenance/     # Maintenance requests
+│   │   ├── documents/       # Document management
+│   │   ├── areas/           # Map areas/sectors
+│   │   ├── tax-policies/    # Tax policy configuration
+│   │   ├── users/           # User management
+│   │   ├── history/         # Activity log
+│   │   └── settings/        # User settings
+│   ├── layout.tsx           # Root layout
+│   └── page.tsx             # Landing page
+├── src/
+│   ├── db/
+│   │   ├── index.ts         # Drizzle client
+│   │   └── schema.ts        # Database schema
+│   ├── features/            # Feature modules
+│   │   ├── auth/            # Authentication
+│   │   ├── property/        # Property features
+│   │   ├── deal/            # Deal management
+│   │   ├── transaction/     # Transactions
+│   │   ├── maintenance/     # Maintenance
+│   │   ├── document/        # Documents
+│   │   ├── tax-policy/      # Tax policies
+│   │   ├── settings/        # Settings
+│   │   └── map/             # Map components
+│   ├── lib/                 # Shared utilities
+│   │   ├── auth.ts          # Session management
+│   │   ├── password.ts      # Password hashing
+│   │   ├── upload.ts        # File upload logic
+│   │   ├── activity.ts      # Activity logging
+│   │   ├── maps.ts          # Map utilities
+│   │   └── utils.ts         # General utilities
+│   ├── components/          # Shared UI components
+│   ├── types/               # TypeScript type definitions
+│   └── ...
+├── drizzle/                 # Database migrations
+├── scripts/                 # Utility scripts
+└── ...
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Authentication & Roles
+
+The app uses JWT-based session authentication stored in HTTP-only cookies.
+
+| Role | Access |
+|------|--------|
+| `admin` | Full access to all modules |
+| `property_manager` | Properties, deals, history |
+| `accountant` | Properties, deals, transactions, tax policies, history |
+| `owner` | Properties, deals |
+| `tenant` | Properties, deals |
+| `client` | Properties, deals, installments |
+| `maintenance_staff` | Properties, maintenance |
+
+## Database Schema Overview
+
+The schema covers:
+
+- **Core:** `roles`, `users`, `addresses`, `localities`
+- **Properties:** `properties`, `propertyFeatures`, `propertyImages`, `propertyOwner`
+- **Deals:** `deals`, `dealSaleDetails`, `dealLeaseDetails`, `dealInstallmentDetails`, `dealPayments`, `dealPaymentSchedules`, `dealPaymentAllocations`, `dealDocuments`, `dealAcceptances`, `dealSettlements`, `dealTaxSnapshots`, `dealAuditLogs`
+- **Legacy/Compatibility:** `transactions`, `leases`, `purchaseRequests`, `purchaseContracts`, `scheduledInstallments`, `paymentLedger`, `installmentPlanTemplates`, `propertyInstallmentPlans`
+- **Tax:** `taxPolicies`, `propertyTaxAssignments`
+- **Other:** `maintenance`, `documents`, `activity`, `userBankAccounts`
+
+See `src/db/schema.ts` for full details.
+
+## License
+
+Private — All rights reserved.

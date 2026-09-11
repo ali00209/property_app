@@ -13,7 +13,8 @@ const DEFAULT_MAX_AGE_SECONDS = 60 * 60 * 24;
 interface TokenPayload {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
+  phone?: string | null;
   role: UserRole;
 }
 
@@ -41,6 +42,7 @@ export function signSession(user: SessionUser): string {
     id: user.id,
     name: user.name,
     email: user.email,
+    phone: user.phone,
     role: user.role,
   };
   return jwt.sign(payload, secret(), {
@@ -56,6 +58,7 @@ export function verifySession(token: string): SessionUser | null {
       id: payload.id,
       name: payload.name,
       email: payload.email,
+      phone: payload.phone,
       role: payload.role,
     };
   } catch {

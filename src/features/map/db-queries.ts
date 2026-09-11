@@ -1,11 +1,12 @@
 import "server-only";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type {
   MapArea,
   MapCity,
   MapPayload,
+  MapUnit,
   MapProperty,
   SessionUser,
 } from "@/types";
@@ -42,8 +43,9 @@ export async function getMapPayload(user: SessionUser): Promise<MapPayload> {
       type: schema.properties.type,
       price: schema.properties.price,
       monthlyRent: schema.properties.monthlyRent,
-      city: schema.addresses.city,
+      city: schema.cities.name,
       area: schema.addresses.area,
+      societyId: schema.properties.societyId,
       latitude: schema.addresses.latitude,
       longitude: schema.addresses.longitude,
     })
@@ -55,6 +57,7 @@ export async function getMapPayload(user: SessionUser): Promise<MapPayload> {
         eq(schema.addresses.entityType, "property"),
       ),
     )
+    .leftJoin(schema.cities, eq(schema.cities.id, schema.addresses.cityId))
     .where(and(...conditions));
 
   const properties: MapProperty[] = [];
@@ -71,13 +74,14 @@ export async function getMapPayload(user: SessionUser): Promise<MapPayload> {
       monthlyRent: row.monthlyRent,
       city: row.city,
       area: row.area,
+      societyId: row.societyId,
       lat,
       lng,
     });
   }
 
   const cityAgg = new Map<string, MapCity>();
-  const areaAgg = new Map<string, MapArea>();
+  const propCountBySociety = new Map<string, number>();
   for (const p of properties) {
     const cityKey = p.city;
     const existing = cityAgg.get(cityKey);
@@ -94,30 +98,70 @@ export async function getMapPayload(user: SessionUser): Promise<MapPayload> {
       });
     }
 
-    const areaKey = `${cityKey}::${p.area ?? ""}`;
-    if (p.area) {
-      const areaExisting = areaAgg.get(areaKey);
-      if (areaExisting) {
-        areaExisting.lat =
-          (areaExisting.lat * areaExisting.count + p.lat) / (areaExisting.count + 1);
-        areaExisting.lng =
-          (areaExisting.lng * areaExisting.count + p.lng) / (areaExisting.count + 1);
-        areaExisting.count += 1;
-      } else {
-        areaAgg.set(areaKey, {
-          city: cityKey,
-          area: p.area,
-          lat: p.lat,
-          lng: p.lng,
-          count: 1,
-        });
-      }
+    if (p.societyId) {
+      propCountBySociety.set(
+        p.societyId,
+        (propCountBySociety.get(p.societyId) ?? 0) + 1,
+      );
     }
+  }
+
+  const societyRows = await db
+    .select({
+      id: schema.societies.id,
+      name: schema.societies.name,
+      city: schema.cities.name,
+      boundary: sql<string>`ST_AsText(${schema.societies.boundary}::geometry)`,
+      lat: sql<number>`ST_Y(ST_Centroid(${schema.societies.boundary}::geometry)::geometry)`,
+      lng: sql<number>`ST_X(ST_Centroid(${schema.societies.boundary}::geometry)::geometry)`,
+    })
+    .from(schema.societies)
+    .innerJoin(schema.cities, eq(schema.cities.id, schema.societies.cityId));
+
+  const areas: MapArea[] = [];
+  for (const r of societyRows) {
+    if (!r.boundary || r.lat === null || r.lng === null) continue;
+    areas.push({
+      id: r.id,
+      city: r.city,
+      area: r.name,
+      lat: r.lat,
+      lng: r.lng,
+      count: propCountBySociety.get(r.id) ?? 0,
+      boundary: r.boundary,
+    });
+  }
+
+  const unitRows = await db
+    .select({
+      id: schema.units.id,
+      unitNumber: schema.units.unitNumber,
+      societyId: schema.societySectors.societyId,
+      lat: sql<number>`ST_Y(${schema.units.centroid}::geometry)`,
+      lng: sql<number>`ST_X(${schema.units.centroid}::geometry)`,
+    })
+    .from(schema.units)
+    .innerJoin(
+      schema.societySectors,
+      eq(schema.societySectors.id, schema.units.sectorId),
+    );
+
+  const units: MapUnit[] = [];
+  for (const r of unitRows) {
+    if (r.lat === null || r.lng === null) continue;
+    units.push({
+      id: r.id,
+      societyId: r.societyId,
+      unitNumber: r.unitNumber,
+      lat: r.lat,
+      lng: r.lng,
+    });
   }
 
   return {
     cities: [...cityAgg.values()],
-    areas: [...areaAgg.values()],
+    areas: areas.sort((a, b) => a.area.localeCompare(b.area)),
     properties,
+    units,
   };
 }

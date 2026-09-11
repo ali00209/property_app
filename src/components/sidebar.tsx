@@ -15,12 +15,12 @@ import {
 import {
   ArrowLeftRight,
   Building2,
-  ClipboardList,
   FileText,
   Handshake,
   History,
   LayoutDashboard,
   LogOut,
+  MapPinned,
   PanelLeft,
   Receipt,
   Settings,
@@ -71,16 +71,16 @@ const navItems: Array<{
     icon: ArrowLeftRight,
   },
   {
+    href: "/dashboard/areas",
+    label: "Areas / Sectors",
+    role: ["admin"],
+    icon: MapPinned,
+  },
+  {
     href: "/dashboard/tax-policies",
     label: "Tax policies",
     role: ["admin", "accountant"],
     icon: Receipt,
-  },
-  {
-    href: "/dashboard/installments",
-    label: "Installments",
-    role: ["admin", "client"],
-    icon: ClipboardList,
   },
   {
     href: "/dashboard/documents",

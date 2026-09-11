@@ -3,7 +3,9 @@
 import {
   Badge,
   Button,
+  DropdownMenu,
   Heading,
+  Icon,
   Stack,
   Table,
   TableBody,
@@ -20,6 +22,8 @@ import { useMemo, useState } from "react";
 import {
   Check,
   CircleDollarSign,
+  EllipseIcon,
+  Ellipsis,
   Plus,
   RotateCcw,
   Search,
@@ -30,7 +34,6 @@ import type {
   Deal,
   DealOption,
   DealTaxCandidates,
-  InstallmentPlanOption,
   Property,
   SessionUser,
 } from "@/types";
@@ -38,7 +41,6 @@ import { DealForm } from "./deal-form";
 import { PaymentForm } from "./payment-form";
 import { SettlementForm } from "./settlement-form";
 import { acceptDealAction, completeDealAction } from "./actions";
-import { de } from "zod/v4/locales";
 
 const typeLabels: Record<Deal["type"], string> = {
   cash_sale: "Cash Sale",
@@ -73,14 +75,12 @@ export function DealList({
   deals,
   properties,
   users,
-  plans,
   taxCandidates,
   user,
 }: {
   deals: Deal[];
   properties: Property[];
   users: DealOption[];
-  plans: InstallmentPlanOption[];
   taxCandidates: DealTaxCandidates;
   user: SessionUser;
 }) {
@@ -232,13 +232,62 @@ export function DealList({
                   : "—"}
               </TableCell>
               <TableCell>
-                <Stack direction="horizontal" hAlign="center" vAlign="center">
-                  {canAccept && deal.status === "pending_acceptance" && (
+                {/*<Stack direction="horizontal" hAlign="center" vAlign="center">*/}
+                <DropdownMenu
+                  button={{
+                    label: "More actions",
+                    icon: <Icon icon={Ellipsis} />,
+                    variant: "ghost",
+                    isIconOnly: true,
+                    tooltip: "More actions",
+                  }}
+                  hasChevron={false}
+                  items={[
+                    {
+                      label: "Accept",
+                      onClick: () => run(() => acceptDealAction(deal.id)),
+                      isDisabled: !canAccept,
+                    },
+                    {
+                      label: "Record Payment",
+                      onClick: () => {
+                        setSelectedDeal(deal);
+                        setIsPaymentOpen(true);
+                      },
+                      isDisabled: !canPay,
+                    },
+                    {
+                      label: "Complete",
+                      onClick: () => run(() => completeDealAction(deal.id)),
+                      isDisabled: !canComplete,
+                    },
+                    { type: "divider" },
+                    {
+                      label: "Terminate",
+                      onClick: () => {
+                        setSelectedDeal(deal);
+                        setSettlementKind("terminate");
+                        setIsSettlementOpen(true);
+                      },
+                      isDisabled: !canTerminate,
+                    },
+                    {
+                      label: "Cancel",
+                      onClick: () => {
+                        setSelectedDeal(deal);
+                        setSettlementKind("cancel");
+                        setIsSettlementOpen(true);
+                      },
+                      isDisabled: !canCancel,
+                    },
+                  ]}
+                />
+                {/*{canAccept && deal.status === "pending_acceptance" && (
                     <Button
                       label=""
                       icon={<Check size={14} />}
                       size="sm"
-                      variant="primary"
+                      variant="ghost"
                       tooltip="Accept"
                       onClick={() => run(() => acceptDealAction(deal.id))}
                     />
@@ -295,8 +344,8 @@ export function DealList({
                       tooltip="Mark completed"
                       onClick={() => run(() => completeDealAction(deal.id))}
                     />
-                  )}
-                </Stack>
+                  )}*/}
+                {/*</Stack>*/}
               </TableCell>
             </TableRow>
           ))}
@@ -312,7 +361,6 @@ export function DealList({
             label: `${property.title} · ${currency(property.price)}`,
           }))}
           userOptions={counterpartyOptions}
-          plans={plans}
           taxCandidates={taxCandidates}
         />
       )}

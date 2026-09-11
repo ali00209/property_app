@@ -23,7 +23,6 @@ export default async function DealsPage() {
       deals={deals}
       properties={options.properties}
       users={options.users}
-      plans={options.plans}
       taxCandidates={taxCandidates}
       user={user}
     />

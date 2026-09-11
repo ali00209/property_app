@@ -1,9 +1,9 @@
 import { and, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { schema } from "@/db";
-import type { DbOrTransaction } from "@/lib/activity";
+import { logActivity, type DbOrTransaction } from "@/lib/activity";
 import { moneyString } from "@/lib/utils";
 import type { DealFormValues } from "./validations";
-import type { Deal, DealFrequency, DealType, SessionUser, UUID } from "@/types";
+import type { Deal, DealFrequency, DealType, FilerStatus, SessionUser, UUID } from "@/types";
 
 export const amount = (value: string | number | null | undefined) =>
   Number(value ?? 0);
@@ -18,11 +18,12 @@ export async function audit(
   actorId: string,
   details?: Record<string, unknown>,
 ) {
-  await tx.insert(schema.dealAuditLogs).values({
-    dealId,
-    action,
-    actorId,
-    details,
+  await logActivity(tx, {
+    action: action === "created" ? "create" : "update",
+    entityType: "deals",
+    entityId: dealId,
+    doneBy: actorId,
+    details: { ...details, event: action },
   });
 }
 
@@ -31,6 +32,7 @@ export async function calculateTax(
   type: DealType,
   baseAmount: number,
   policyId?: string,
+  filerStatus?: FilerStatus,
 ) {
   if (!policyId) {
     return {
@@ -69,12 +71,26 @@ export async function calculateTax(
     throw new Error("The selected tax policy is not active or applicable.");
   }
 
-  const breakdown = selected.map((policy) => ({
-    policy,
+  const policy = selected[0];
+  let effectiveValue = amount(policy.value);
+
+  if (policy.filerStatus && policy.filerStatus !== (filerStatus ?? "non_filer")) {
+    throw new Error("Tax policy filer status does not match the payer's filer status.");
+  }
+
+  if (policy.minValue && baseAmount < amount(policy.minValue)) {
+    return { baseAmount, totalTaxAmount: 0, breakdown: [] };
+  }
+  if (policy.maxValue && baseAmount > amount(policy.maxValue)) {
+    return { baseAmount, totalTaxAmount: 0, breakdown: [] };
+  }
+
+  const breakdown = selected.map((p) => ({
+    policy: p,
     taxAmount: roundMoney(
-      policy.kind === "percentage"
-        ? (baseAmount * amount(policy.value)) / 100
-        : amount(policy.value),
+      p.kind === "percentage"
+        ? (baseAmount * amount(p.value)) / 100
+        : amount(p.value),
     ),
   }));
   return {
@@ -125,11 +141,11 @@ export async function createDealCore(
     .from(schema.properties)
     .where(eq(schema.properties.id, dto.propertyId));
   if (!property) throw new Error("Property not found.");
-  if (property.status !== "available") {
+  if (property.status !== "available" && property.status !== "vacant") {
     throw new Error("Property already has an active deal.");
   }
   const [counterparty] = await tx
-    .select({ id: schema.users.id })
+    .select({ id: schema.users.id, filerStatus: schema.users.filerStatus })
     .from(schema.users)
     .where(eq(schema.users.id, dto.counterpartyId));
   if (!counterparty) throw new Error("Counterparty not found.");
@@ -142,45 +158,11 @@ export async function createDealCore(
   } | undefined;
 
   if (dto.type === "installment_purchase") {
-    const [assignment] = await tx
-      .select()
-      .from(schema.propertyInstallmentPlans)
-      .leftJoin(
-        schema.installmentPlanTemplates,
-        eq(
-          schema.installmentPlanTemplates.id,
-          schema.propertyInstallmentPlans.templateId,
-        ),
-      )
-      .where(
-        and(
-          eq(schema.propertyInstallmentPlans.id, dto.propertyPlanId ?? ""),
-          eq(schema.propertyInstallmentPlans.propertyId, dto.propertyId),
-          eq(schema.propertyInstallmentPlans.status, "published"),
-          eq(schema.installmentPlanTemplates.status, "published"),
-        ),
-      );
-    if (
-      !assignment?.property_installment_plans ||
-      !assignment.installment_plan_templates
-    ) {
-      throw new Error("A published installment plan is required.");
-    }
-    const frequencyMonths =
-      assignment.installment_plan_templates.frequency === "monthly"
-        ? 1
-        : assignment.installment_plan_templates.frequency === "quarterly"
-          ? 3
-          : 12;
     installmentTerms = {
-      downPaymentAmount:
-        assignment.property_installment_plans.downPaymentAmount,
-      installmentAmount:
-        assignment.property_installment_plans.installmentAmount,
-      installmentCount: Math.ceil(
-        assignment.installment_plan_templates.termMonths / frequencyMonths,
-      ),
-      frequency: assignment.installment_plan_templates.frequency,
+      downPaymentAmount: dto.downPaymentAmount ?? "0",
+      installmentAmount: dto.installmentAmount ?? "0",
+      installmentCount: Number(dto.installmentCount ?? 0),
+      frequency: (dto.frequency ?? "monthly") as DealFrequency,
     };
   }
 
@@ -202,6 +184,7 @@ export async function createDealCore(
     dto.type,
     contractedAmount,
     dto.taxPolicyId,
+    counterparty.filerStatus as FilerStatus | undefined,
   );
 
   const [deal] = await tx
@@ -226,7 +209,8 @@ export async function createDealCore(
           description: property.description,
           type: property.type,
           price: property.price,
-          area: property.area,
+          areaValue: property.areaValue,
+          areaUnit: property.areaUnit,
         },
         terms: { ...dto },
         capturedAt: new Date().toISOString(),
@@ -238,7 +222,7 @@ export async function createDealCore(
   if (dto.type === "cash_sale") {
     await tx.insert(schema.dealSaleDetails).values({
       dealId: deal.id,
-      paymentMethod: dto.paymentMethod,
+      paymentMethod: dto.paymentMethod as never,
       dueOn: dto.dueOn,
     });
   } else if (dto.type === "fixed_lease" || dto.type === "periodic_rent") {
@@ -246,8 +230,10 @@ export async function createDealCore(
       dealId: deal.id,
       rentAmount: moneyString(dto.rentAmount ?? "0"),
       depositAmount: moneyString(dto.depositAmount ?? "0"),
+      advanceRentMonths: Number(dto.advanceRentMonths ?? 0),
       frequency: (dto.frequency ?? "monthly") as never,
       fixedTerm: dto.type === "fixed_lease",
+      noticePeriodDays: dto.noticePeriodDays ? Number(dto.noticePeriodDays) : null,
     });
   } else {
     await tx.insert(schema.dealInstallmentDetails).values({
@@ -309,6 +295,7 @@ export async function createDealCore(
         policyName: item.policy.name,
         policyKind: item.policy.kind,
         policyValue: item.policy.value,
+        filerStatusUsed: (counterparty.filerStatus ?? "non_filer") as FilerStatus,
         policyCode: item.policy.code,
         authority: item.policy.authority,
         baseAmount: money(contractedAmount),
@@ -320,7 +307,7 @@ export async function createDealCore(
 
   await tx
     .update(schema.properties)
-    .set({ status: "under_contract", updatedAt: new Date() })
+    .set({ updatedAt: new Date() })
     .where(eq(schema.properties.id, property.id));
   await audit(tx, deal.id, "created", actor.id, { type: dto.type });
   return deal.id;

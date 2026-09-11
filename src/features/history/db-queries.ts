@@ -37,14 +37,16 @@ export async function listActivities(limit = 200): Promise<ActivityItem[]> {
   const labelMap = new Map<string, string>();
   for (const [entityType, ids] of groups) {
     const uniqueIds = [...new Set(ids)];
-    if (entityType === "transactions") {
-      const tx = await db
-        .select({ id: schema.transactions.id, amount: schema.transactions.amount })
-        .from(schema.transactions)
-        .where(inArray(schema.transactions.id, uniqueIds));
-      for (const row of tx) {
-        labelMap.set(row.id, `Transaction ${row.amount}`)
-      }
+    if (entityType === "deals") {
+      const list = await db
+        .select({ id: schema.deals.id, title: schema.properties.title })
+        .from(schema.deals)
+        .innerJoin(
+          schema.properties,
+          eq(schema.properties.id, schema.deals.propertyId),
+        )
+        .where(inArray(schema.deals.id, uniqueIds));
+      for (const row of list) labelMap.set(row.id, `Deal · ${row.title}`)
       continue
     }
     if (entityType === "properties" || entityType === "maintenance") {
@@ -68,7 +70,7 @@ export async function listActivities(limit = 200): Promise<ActivityItem[]> {
   return rows.map((row) => ({
     id: row.id,
     action: row.action,
-    details: row.details,
+    details: (row.details ?? null) as Record<string, unknown> | null,
     entityType: row.entityType,
     entityId: row.entityId,
     doneBy: row.doneBy,

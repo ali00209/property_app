@@ -25,35 +25,30 @@ async function main() {
 
   try {
     console.log("Clearing existing data...");
-    await db.delete(schema.dealPayments);
     await db.delete(schema.dealPaymentAllocations);
     await db.delete(schema.dealPaymentSchedules);
-    await db.delete(schema.dealAuditLogs);
-    await db.delete(schema.dealDocuments);
-    await db.delete(schema.dealAcceptances);
-    await db.delete(schema.dealSettlements);
     await db.delete(schema.dealTaxSnapshots);
-    await db.delete(schema.scheduledInstallments);
-    await db.delete(schema.installmentAuditLogs);
-    await db.delete(schema.paymentLedger);
-    await db.delete(schema.purchaseContracts);
+    await db.delete(schema.dealSettlements);
+    await db.delete(schema.dealAcceptances);
+    await db.delete(schema.dealSaleDetails);
+    await db.delete(schema.dealLeaseDetails);
+    await db.delete(schema.dealInstallmentDetails);
     await db.delete(schema.deals);
-    await db.delete(schema.purchaseRequests);
-    await db.delete(schema.purchaseRequests);
-    await db.delete(schema.propertyInstallmentPlans);
-    await db.delete(schema.installmentPlanTemplates);
-    await db.delete(schema.taxPolicies);
-    await db.delete(schema.userBankAccounts);
+    await db.delete(schema.dealPayments);
     await db.delete(schema.propertyOwner);
-    await db.delete(schema.transactions);
-    await db.delete(schema.leases);
-    await db.delete(schema.maintenance);
     await db.delete(schema.propertyImages);
     await db.delete(schema.propertyFeatures);
     await db.delete(schema.addresses);
-    await db.delete(schema.activity);
     await db.delete(schema.documents);
+    await db.delete(schema.activity);
     await db.delete(schema.properties);
+    await db.delete(schema.units);
+    await db.delete(schema.societySectors);
+    await db.delete(schema.societies);
+    await db.delete(schema.cities);
+    await db.delete(schema.taxPolicies);
+    await db.delete(schema.maintenance);
+    await db.delete(schema.userBankAccounts);
     await db.delete(schema.users);
     await db.delete(schema.roles);
 
@@ -139,15 +134,63 @@ async function main() {
 
     console.log("Seeding users address...");
     const userAddressValues = users.map((user) => ({
-      city: "Lahore",
-      state: "punjab" as const,
+      city: "Islamabad",
+      state: "federal" as const,
       street: "none",
       entityId: user.id,
       entityType: "user" as const,
-      zipCode: "30333",
+      zipCode: "46000",
     }));
 
     await db.insert(schema.addresses).values(userAddressValues);
+
+    // -------------------- Geo chain (city → society → sector → unit) ---------------------
+
+    console.log("Seeding geo chain...");
+    const [city] = await db
+      .insert(schema.cities)
+      .values({
+        name: "Islamabad",
+        slug: "islamabad",
+        province: "federal",
+        centerPoint: "POINT(73.0479 33.6844)",
+      })
+      .returning();
+
+    const [society] = await db
+      .insert(schema.societies)
+      .values({
+        cityId: city.id,
+        name: "Bahria Enclave",
+        slug: "bahria-enclave",
+        kind: "housing_society",
+        isActive: true,
+        boundary:
+          "POLYGON((73.04 33.68, 73.06 33.68, 73.06 33.70, 73.04 33.70, 73.04 33.68))",
+      })
+      .returning();
+
+    const [sector] = await db
+      .insert(schema.societySectors)
+      .values({ societyId: society.id, name: "Sector C" })
+      .returning();
+
+    const [unit] = await db
+      .insert(schema.units)
+      .values({
+        sectorId: sector.id,
+        unitNumber: "C-105",
+        streetNumber: "7",
+        centroid: "POINT(73.0520 33.6885)",
+        areaValue: "500",
+        areaUnit: "sqyd",
+        type: "residential",
+      })
+      .returning();
+
+    const adminId = users.find(
+      (u) => u.roleId === roles.find((r) => r.role === "admin")!.id,
+    )!.id;
 
     // -------------------- Properties ---------------------
 
@@ -155,31 +198,63 @@ async function main() {
     const propertyValues = [
       {
         title: "Luxury Downtown Apartment",
+        slug: "luxury-downtown-apartment",
         description:
           "A beautiful luxury apartment in the heart of the city with modern amenities.",
         type: "apartment" as const,
         status: "available" as const,
+        listingPurpose: "sale" as const,
+        cityId: city.id,
+        societyId: society.id,
+        sectorId: sector.id,
+        unitId: unit.id,
+        locationPoint: "POINT(73.0520 33.6885)",
         price: "500000",
         monthlyRent: "45000",
-        area: 1200,
+        areaValue: "1200",
+        areaUnit: "sqft" as const,
+        areaSqft: "1200",
+        bedrooms: 2,
+        bathrooms: 2,
       },
       {
         title: "Spacious Family House",
+        slug: "spacious-family-house",
         description:
           "A spacious family house with a large backyard perfect for kids and pets.",
         type: "house" as const,
         status: "available" as const,
+        listingPurpose: "sale" as const,
+        cityId: city.id,
+        societyId: society.id,
+        sectorId: sector.id,
+        unitId: unit.id,
+        locationPoint: "POINT(73.0480 33.6900)",
         price: "750000",
-        area: 2500,
+        areaValue: "200",
+        areaUnit: "marla" as const,
+        areaSqft: "10890",
+        bedrooms: 5,
+        bathrooms: 4,
       },
       {
         title: "Modern Office Space",
+        slug: "modern-office-space",
         description:
           "Modern office space in a prime business district with high-speed internet.",
         type: "office" as const,
-        status: "leased" as const,
+        status: "available" as const,
+        listingPurpose: "rent" as const,
+        cityId: city.id,
+        societyId: society.id,
+        sectorId: sector.id,
+        unitId: unit.id,
+        locationPoint: "POINT(73.0540 33.6860)",
         price: "300000",
-        area: 1500,
+        monthlyRent: "30000",
+        areaValue: "1500",
+        areaUnit: "sqft" as const,
+        areaSqft: "1500",
       },
     ];
     const properties = await db
@@ -205,12 +280,16 @@ async function main() {
 
     console.log("Seeding properties addresses...");
     const propertyAddressesValues = properties.map((property) => ({
-      city: "Lahore",
-      state: "punjab" as const,
+      city: "Islamabad",
+      cityId: city.id,
+      area: society.name,
+      state: "federal" as const,
       street: "none",
       entityId: property.id,
       entityType: "property" as const,
-      zipCode: "30333",
+      zipCode: "46000",
+      latitude: "33.6885",
+      longitude: "73.0520",
     }));
 
     await db.insert(schema.addresses).values(propertyAddressesValues);
@@ -218,57 +297,68 @@ async function main() {
     // -------------------- Property Owners ---------------------
 
     console.log("Seeding properties owners...");
+    const ownerId = users.find(
+      (u) => u.roleId === roles.find((r) => r.role === "owner")!.id,
+    )!.id;
     const propertyOwnerValues: (typeof schema.propertyOwner.$inferInsert)[] = [
       {
         propertyId: properties[0].id,
-        ownerId: users.find(
-          (u) => u.roleId === roles.find((r) => r.role === "owner")!.id,
-        )!.id,
+        ownerId,
         ownershipPercentage: 100,
       },
       {
         propertyId: properties[2].id,
-        ownerId: users.find(
-          (u) => u.roleId === roles.find((r) => r.role === "owner")!.id,
-        )!.id,
-        ownershipPercentage: 20,
+        ownerId,
+        ownershipPercentage: 100,
       },
     ];
     await db.insert(schema.propertyOwner).values(propertyOwnerValues);
 
-    // -------------------- Leases ---------------------
+    // -------------------- Deal (active cash sale) ---------------------
 
-    console.log("Seeding lease...");
-    const leaseValues: (typeof schema.leases.$inferInsert)[] = [
-      {
+    console.log("Seeding a cash-sale deal...");
+    const tenantId = users.find(
+      (u) => u.roleId === roles.find((r) => r.role === "tenant")!.id,
+    )!.id;
+    const [deal] = await db
+      .insert(schema.deals)
+      .values({
         propertyId: properties[2].id,
-        tenentId: users.find(
-          (u) => u.roleId === roles.find((r) => r.role === "tenant")?.id,
-        )?.id,
-        deposit: 30000,
-        monthlyRent: 3000,
-        startDate: "2024-01-16",
-      },
-    ];
+        type: "cash_sale",
+        status: "pending_acceptance",
+        counterpartyId: tenantId,
+        sellerId: ownerId,
+        currency: "PKR",
+        totalAmount: "300000",
+        taxAmount: "0",
+        taxPayer: "counterparty",
+        createdBy: adminId,
+        snapshot: {
+          property: {
+            id: properties[2].id,
+            title: properties[2].title,
+            type: properties[2].type,
+            price: properties[2].price,
+            areaValue: properties[2].areaValue,
+            areaUnit: properties[2].areaUnit,
+          },
+          capturedAt: new Date().toISOString(),
+        },
+      })
+      .returning();
 
-    const leases = await db.insert(schema.leases).values(leaseValues).returning();
-
-    // -------------------- Transactions ---------------------
-
-    console.log("Seeding transactions...");
-    const transactionValues: (typeof schema.transactions.$inferInsert)[] = [
-      {
-        propertyId: properties[2].id,
-        status: "paid",
-        amount: leases[0].deposit!,
-        notes: "Down payment for luxury apartment",
-        paymentMethod: "bank_transfer",
-        tenentId: users.find(
-          (u) => u.roleId === roles.find((r) => r.role === "tenant")?.id,
-        )?.id,
-      },
-    ];
-    await db.insert(schema.transactions).values(transactionValues);
+    await db.insert(schema.dealSaleDetails).values({
+      dealId: deal.id,
+      paymentMethod: "bank_transfer",
+      dueOn: new Date().toISOString().slice(0, 10),
+    });
+    await db.insert(schema.dealPaymentSchedules).values({
+      dealId: deal.id,
+      sequence: 0,
+      dueOn: new Date().toISOString().slice(0, 10),
+      principalAmount: "300000",
+      taxAmount: "0",
+    });
 
     // -------------------- Maintenance ---------------------
 
@@ -287,7 +377,7 @@ async function main() {
         )!.id,
         estimatedCost: "150",
         actualCost: "120",
-        completedDate: "2024-01-16",
+        completedDate: new Date().toISOString().slice(0, 10),
       },
       {
         propertyId: properties[2].id,
@@ -313,10 +403,10 @@ async function main() {
       {
         entityId: properties[2].id,
         entityType: "properties",
-        name: "lease_agreement.pdf",
+        name: "sale_agreement.pdf",
         fileType: "pdf",
         fileSize: 1024,
-        fileUrl: "https://example.com/documents/lease_agreement.pdf",
+        fileUrl: "https://example.com/documents/sale_agreement.pdf",
       },
       {
         entityId: properties[1].id,
@@ -335,15 +425,22 @@ async function main() {
     const activityValues: (typeof schema.activity.$inferInsert)[] = [
       {
         action: "create",
-        details: "Created new tenent user",
         entityType: "users",
-        entityId: users[5].id,
+        entityId: tenantId,
+        doneBy: adminId,
       },
       {
         action: "create",
-        details: "Created luxury downtown apartment",
         entityType: "properties",
         entityId: properties[0].id,
+        doneBy: adminId,
+      },
+      {
+        action: "create",
+        entityType: "deals",
+        entityId: deal.id,
+        doneBy: adminId,
+        details: { event: "created", type: deal.type },
       },
     ];
     await db.insert(schema.activity).values(activityValues);

@@ -41,12 +41,24 @@ export async function createUserAction(
   }
 
   try {
-    const email = parsed.data.email;
-    const [existing] = await db
-      .select({ id: schema.users.id })
-      .from(schema.users)
-      .where(eq(schema.users.email, email));
-    if (existing) throw new Error("An account with this email already exists.");
+    const email = parsed.data.email ?? null;
+    const phone = parsed.data.phone ?? null;
+    if (email) {
+      const [existing] = await db
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.email, email));
+      if (existing) throw new Error("An account with this email already exists.");
+    }
+    if (phone) {
+      const [existing] = await db
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.phone, phone));
+      if (existing) {
+        throw new Error("An account with this phone number already exists.");
+      }
+    }
 
     const [role] = await db
       .select({ id: schema.roles.id })
@@ -64,7 +76,7 @@ export async function createUserAction(
           email,
           password,
           roleId: role.id,
-          phone: parsed.data.phone || null,
+          phone,
         })
         .returning();
       await logActivity(tx, {
@@ -116,13 +128,23 @@ export async function updateUserAction(
       .where(eq(schema.users.id, id));
     if (!existing) throw new Error("User not found.");
 
-    if (parsed.data.email !== undefined) {
+    if (parsed.data.email !== undefined && parsed.data.email) {
       const [already] = await db
         .select({ id: schema.users.id })
         .from(schema.users)
         .where(eq(schema.users.email, parsed.data.email));
       if (already && already.id !== id) {
         throw new Error("An account with this email already exists.");
+      }
+    }
+
+    if (parsed.data.phone !== undefined && parsed.data.phone) {
+      const [already] = await db
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.phone, parsed.data.phone));
+      if (already && already.id !== id) {
+        throw new Error("An account with this phone number already exists.");
       }
     }
 
@@ -134,9 +156,19 @@ export async function updateUserAction(
 
     const updates: Partial<typeof schema.users.$inferInsert> = {};
     if (parsed.data.name !== undefined) updates.name = parsed.data.name;
-    if (parsed.data.email !== undefined) updates.email = parsed.data.email;
+    if (parsed.data.email !== undefined)
+      updates.email = parsed.data.email ?? null;
     if (parsed.data.phone !== undefined)
-      updates.phone = parsed.data.phone || null;
+      updates.phone = parsed.data.phone ?? null;
+
+    const finalEmail =
+      updates.email !== undefined ? updates.email : existing.email;
+    const finalPhone =
+      updates.phone !== undefined ? updates.phone : existing.phone;
+    if (!finalEmail && !finalPhone) {
+      throw new Error("User must have an email or phone number.");
+    }
+
     if (parsed.data.password) {
       updates.password = await hashPassword(parsed.data.password);
     }

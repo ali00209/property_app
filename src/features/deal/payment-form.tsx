@@ -19,6 +19,8 @@ import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { TextArea } from "@astryxdesign/core";
 import { TextField } from "@/components/ui";
+import { paymentMethodFilter } from "@/lib/constants";
+import { SelectField } from "@/components/ui";
 import type { Deal } from "@/types";
 import { recordDealPaymentAction } from "./actions";
 import { paymentSchema, type PaymentFormValues } from "./validations";
@@ -91,12 +93,12 @@ export function PaymentForm({
                 isRequired
                 placeholder="e.g. 1500000"
               />
-              <TextField
+              <SelectField
                 form={form}
                 name="paymentMethod"
                 label="Payment method"
+                options={paymentMethodFilter}
                 isOptional
-                placeholder="Bank transfer, cash, cheque…"
               />
               <TextField
                 form={form}

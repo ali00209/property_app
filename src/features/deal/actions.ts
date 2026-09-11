@@ -115,15 +115,6 @@ export async function acceptDealAction(id: string): Promise<ActionResult<Deal>> 
         )
         .returning();
       if (!active) throw new Error("Deal changed concurrently.");
-      if (deal.type === "fixed_lease" || deal.type === "periodic_rent") {
-        await tx
-          .update(schema.properties)
-          .set({
-            status: deal.type === "fixed_lease" ? "leased" : "rented",
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.properties.id, deal.propertyId));
-      }
       await audit(tx, id, "accepted", actor.id);
       return { ...active, type: deal.type, propertyId: deal.propertyId };
     });
@@ -187,19 +178,13 @@ export async function recordDealPaymentAction(
       let remaining = amount(parsed.data.amount);
       let allocatedPrincipal = 0;
       let allocatedTax = 0;
-      const [payment] = await tx
-        .insert(schema.dealPayments)
-        .values({
-          dealId: id,
-          amount: moneyString(parsed.data.amount),
-          principalAmount: "0",
-          taxAmount: "0",
-          paymentMethod: parsed.data.paymentMethod,
-          reference: parsed.data.reference,
-          notes: parsed.data.notes,
-          recordedBy: actor.id,
-        })
-        .returning();
+      const allocations: Array<{
+        schedule: typeof schema.dealPaymentSchedules.$inferSelect;
+        principal: number;
+        tax: number;
+        paidTax: number;
+        paidPrincipal: number;
+      }> = [];
 
       for (const schedule of schedules) {
         if (remaining <= 0) break;
@@ -221,38 +206,52 @@ export async function recordDealPaymentAction(
         if (taxAllocation || principalAllocation) {
           allocatedTax += taxAllocation;
           allocatedPrincipal += principalAllocation;
-          await tx.insert(schema.dealPaymentAllocations).values({
-            paymentId: payment.id,
-            scheduleId: schedule.id,
-            principalAmount: money(principalAllocation),
-            taxAmount: money(taxAllocation),
+          allocations.push({
+            schedule,
+            principal: principalAllocation,
+            tax: taxAllocation,
+            paidTax: amount(schedule.paidTax) + taxAllocation,
+            paidPrincipal: amount(schedule.paidPrincipal) + principalAllocation,
           });
-          const paidTax = amount(schedule.paidTax) + taxAllocation;
-          const paidPrincipal =
-            amount(schedule.paidPrincipal) + principalAllocation;
-          await tx
-            .update(schema.dealPaymentSchedules)
-            .set({
-              paidTax: money(paidTax),
-              paidPrincipal: money(paidPrincipal),
-              status:
-                paidTax + paidPrincipal + 0.01 >=
-                amount(schedule.taxAmount) + amount(schedule.principalAmount)
-                  ? "paid"
-                  : "partially_paid",
-            })
-            .where(eq(schema.dealPaymentSchedules.id, schedule.id));
         }
       }
+      if (remaining > 0) allocatedPrincipal += remaining;
 
-      const [updated] = await tx
-        .update(schema.dealPayments)
-        .set({
+      const [payment] = await tx
+        .insert(schema.dealPayments)
+        .values({
+          dealId: id,
+          amount: moneyString(parsed.data.amount),
           principalAmount: money(allocatedPrincipal),
           taxAmount: money(allocatedTax),
+          paymentMethod: parsed.data.paymentMethod as never,
+          reference: parsed.data.reference,
+          notes: parsed.data.notes,
+          recordedBy: actor.id,
         })
-        .where(eq(schema.dealPayments.id, payment.id))
         .returning();
+
+      for (const allocation of allocations) {
+        await tx.insert(schema.dealPaymentAllocations).values({
+          paymentId: payment.id,
+          scheduleId: allocation.schedule.id,
+          principalAmount: money(allocation.principal),
+          taxAmount: money(allocation.tax),
+        });
+        await tx
+          .update(schema.dealPaymentSchedules)
+          .set({
+            paidTax: money(allocation.paidTax),
+            paidPrincipal: money(allocation.paidPrincipal),
+            status:
+              allocation.paidTax + allocation.paidPrincipal + 0.01 >=
+              amount(allocation.schedule.taxAmount) +
+                amount(allocation.schedule.principalAmount)
+                ? "paid"
+                : "partially_paid",
+          })
+          .where(eq(schema.dealPaymentSchedules.id, allocation.schedule.id));
+      }
 
       const updatedPaid = paid + amount(parsed.data.amount);
       if (
@@ -264,16 +263,12 @@ export async function recordDealPaymentAction(
           .update(schema.deals)
           .set({ status: "completed", completedAt: new Date(), updatedAt: new Date() })
           .where(eq(schema.deals.id, id));
-        await tx
-          .update(schema.properties)
-          .set({ status: "sold", updatedAt: new Date() })
-          .where(eq(schema.properties.id, deal.propertyId));
       }
       await audit(tx, id, "payment_recorded", actor.id, {
         paymentId: payment.id,
         amount: parsed.data.amount,
       });
-      return updated;
+      return payment;
     });
 
     revalidatePath("/dashboard/deals");
@@ -385,16 +380,6 @@ export async function completeDealAction(id: string): Promise<ActionResult<Deal>
         .where(and(eq(schema.deals.id, id), eq(schema.deals.status, "active")))
         .returning();
       if (!result) throw new Error("Deal changed concurrently.");
-      await tx
-        .update(schema.properties)
-        .set({
-          status:
-            deal.type === "cash_sale" || deal.type === "installment_purchase"
-              ? "sold"
-              : "available",
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.properties.id, deal.propertyId));
       await audit(tx, id, "completed", actor.id, { paidAmount: paid });
       return { ...result, type: deal.type, propertyId: deal.propertyId };
     });
@@ -526,8 +511,9 @@ export async function addDealDocumentAction(
   }
   try {
     const upload = await saveUpload(file);
-    await db.insert(schema.dealDocuments).values({
-      dealId: id,
+    await db.insert(schema.documents).values({
+      entityId: id,
+      entityType: "deals",
       name: file.name,
       fileType: upload.fileType,
       fileSize: upload.fileSize,

@@ -10,7 +10,6 @@ import type {
   DealStatus,
   DealSummary,
   DealType,
-  InstallmentPlanOption,
   Property,
   SessionUser,
   UUID,
@@ -100,8 +99,13 @@ export async function getDealDetail(
     .orderBy(desc(schema.dealPayments.createdAt));
   const documents = await db
     .select()
-    .from(schema.dealDocuments)
-    .where(eq(schema.dealDocuments.dealId, id));
+    .from(schema.documents)
+    .where(
+      and(
+        eq(schema.documents.entityType, "deals"),
+        eq(schema.documents.entityId, id),
+      ),
+    );
   const acceptances = await db
     .select()
     .from(schema.dealAcceptances)
@@ -129,9 +133,26 @@ export async function getDealDetail(
     .where(eq(schema.dealSettlements.dealId, id));
   const auditLogs = await db
     .select()
-    .from(schema.dealAuditLogs)
-    .where(eq(schema.dealAuditLogs.dealId, id))
-    .orderBy(desc(schema.dealAuditLogs.createdAt));
+    .from(schema.activity)
+    .where(
+      and(
+        eq(schema.activity.entityType, "deals"),
+        eq(schema.activity.entityId, id),
+      ),
+    )
+    .orderBy(desc(schema.activity.createdAt));
+
+  const actorIds = [
+    ...new Set(auditLogs.map((log) => log.doneBy).filter(Boolean) as string[]),
+  ];
+  const actors =
+    actorIds.length > 0
+      ? await db
+          .select({ id: schema.users.id, name: schema.users.name })
+          .from(schema.users)
+          .where(inArray(schema.users.id, actorIds))
+      : [];
+  const actorNameMap = new Map(actors.map((actor) => [actor.id, actor.name]));
 
   return {
     ...row.deals,
@@ -142,6 +163,9 @@ export async function getDealDetail(
     completedAt: iso(row.deals.completedAt),
     cancelledAt: iso(row.deals.cancelledAt),
     terminatedAt: iso(row.deals.terminatedAt),
+    tokenPaidAt: iso(row.deals.tokenPaidAt),
+    mutationCompletedAt: iso(row.deals.mutationCompletedAt),
+    possessionGrantedAt: iso(row.deals.possessionGrantedAt),
     property: row.properties
       ? { ...row.properties, createdAt: iso(row.properties.createdAt), updatedAt: iso(row.properties.updatedAt) }
       : null,
@@ -180,7 +204,14 @@ export async function getDealDetail(
       createdAt: iso(settlement.createdAt),
     })) as DealDetail["settlements"],
     auditLogs: auditLogs.map((log) => ({
-      ...log,
+      id: log.id,
+      action: log.action,
+      details: log.details,
+      entityType: log.entityType,
+      entityId: log.entityId,
+      doneBy: log.doneBy,
+      doneByName: log.doneBy ? (actorNameMap.get(log.doneBy) ?? null) : null,
+      entityLabel: null,
       createdAt: iso(log.createdAt),
     })) as DealDetail["auditLogs"],
   };
@@ -189,7 +220,6 @@ export async function getDealDetail(
 export async function getDealOptions(): Promise<{
   properties: Property[]
   users: DealOption[]
-  plans: InstallmentPlanOption[]
 }> {
   const properties = await db
     .select()
@@ -207,38 +237,6 @@ export async function getDealOptions(): Promise<{
     .innerJoin(schema.roles, eq(schema.roles.id, schema.users.roleId))
     .orderBy(schema.users.name);
 
-  const plans = await db
-    .select({
-      id: schema.propertyInstallmentPlans.id,
-      propertyId: schema.propertyInstallmentPlans.propertyId,
-      propertyTitle: schema.properties.title,
-      planName: schema.installmentPlanTemplates.name,
-      price: schema.propertyInstallmentPlans.price,
-      termMonths: schema.installmentPlanTemplates.termMonths,
-      frequency: schema.installmentPlanTemplates.frequency,
-      downPaymentAmount: schema.propertyInstallmentPlans.downPaymentAmount,
-      installmentAmount: schema.propertyInstallmentPlans.installmentAmount,
-      status: schema.installmentPlanTemplates.status,
-    })
-    .from(schema.propertyInstallmentPlans)
-    .innerJoin(
-      schema.installmentPlanTemplates,
-      eq(
-        schema.installmentPlanTemplates.id,
-        schema.propertyInstallmentPlans.templateId,
-      ),
-    )
-    .innerJoin(
-      schema.properties,
-      eq(schema.properties.id, schema.propertyInstallmentPlans.propertyId),
-    )
-    .where(
-      and(
-        eq(schema.propertyInstallmentPlans.status, "published"),
-        eq(schema.installmentPlanTemplates.status, "published"),
-      ),
-    );
-
   return {
     properties: properties.map((property) => ({
       ...property,
@@ -246,7 +244,6 @@ export async function getDealOptions(): Promise<{
       updatedAt: iso(property.updatedAt),
     })) as unknown as Property[],
     users: users as unknown as DealOption[],
-    plans: plans as unknown as InstallmentPlanOption[],
   };
 }
 

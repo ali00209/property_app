@@ -10,16 +10,21 @@ export const dealFormSchema = z
       "installment_purchase",
     ]),
     counterpartyId: z.string().min(1, "Counterparty is required."),
-    propertyPlanId: z.string().optional(),
     taxPolicyId: z.union([z.literal(""), z.string().uuid()]).optional(),
     currency: z.string().trim().min(1, "Currency is required.").default("PKR"),
     startsOn: z.string().optional(),
     endsOn: z.string().optional(),
     dueOn: z.string().optional(),
     totalAmount: z.string().optional(),
+    earnestAmount: z.string().optional(),
     paymentMethod: z.string().optional(),
     rentAmount: z.string().optional(),
     depositAmount: z.string().optional(),
+    advanceRentMonths: z.string().optional(),
+    noticePeriodDays: z.string().optional(),
+    downPaymentAmount: z.string().optional(),
+    installmentAmount: z.string().optional(),
+    installmentCount: z.string().optional(),
     frequency: z
       .enum(["monthly", "quarterly", "annually"])
       .optional()
@@ -46,9 +51,17 @@ export const dealFormSchema = z
       required("rentAmount", "Rent amount is required.");
     }
     if (values.type === "installment_purchase") {
-      required("propertyPlanId", "An installment plan is required.");
+      required("downPaymentAmount", "Down payment is required.");
+      required("installmentAmount", "Installment amount is required.");
+      required("installmentCount", "Number of installments is required.");
     }
-    for (const field of ["totalAmount", "rentAmount", "depositAmount"] as const) {
+    for (const field of [
+      "totalAmount",
+      "rentAmount",
+      "depositAmount",
+      "downPaymentAmount",
+      "installmentAmount",
+    ] as const) {
       const value = values[field];
       if (value && Number(value) < 0) {
         context.addIssue({
@@ -57,6 +70,16 @@ export const dealFormSchema = z
           message: "Amount must be non-negative.",
         });
       }
+    }
+    if (
+      values.installmentCount &&
+      Number(values.installmentCount) < 1
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["installmentCount"],
+        message: "At least one installment is required.",
+      });
     }
     if (
       values.startsOn &&

@@ -358,7 +358,11 @@ export default async function DealDetailPage({
             <Heading level={3}>Activity</Heading>
             {deal.auditLogs.map((log) => (
               <Text type="body" color="secondary" key={log.id}>
-                {log.action} —{" "}
+                {String(
+                  (log.details as Record<string, unknown> | null)?.event ??
+                    log.action,
+                )}
+                {log.doneByName ? ` by ${log.doneByName}` : ""} —{" "}
                 {log.createdAt
                   ? new Date(log.createdAt).toLocaleString()
                   : ""}

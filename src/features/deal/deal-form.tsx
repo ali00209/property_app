@@ -20,12 +20,8 @@ import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { DateField, SelectField, TextField } from "@/components/ui";
 import { currency } from "@/lib/utils";
-import type {
-  DealTaxCandidates,
-  DealType,
-  InstallmentPlanOption,
-  PolicyMeta,
-} from "@/types";
+import { paymentMethodFilter } from "@/lib/constants";
+import type { DealTaxCandidates, DealType, PolicyMeta } from "@/types";
 import { createDealAction } from "./actions";
 import { dealFormSchema, type DealFormValues } from "./validations";
 
@@ -56,6 +52,9 @@ const defaults: DealFormValues = {
   currency: "PKR",
   frequency: "monthly",
   taxPolicyId: "",
+  downPaymentAmount: "",
+  installmentAmount: "",
+  installmentCount: "",
 };
 
 export function DealForm({
@@ -63,14 +62,12 @@ export function DealForm({
   setIsOpen,
   propertyOptions,
   userOptions,
-  plans,
   taxCandidates,
 }: {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   propertyOptions: Array<{ value: string; label: string }>;
   userOptions: Array<{ value: string; label: string }>;
-  plans: InstallmentPlanOption[];
   taxCandidates: DealTaxCandidates;
 }) {
   const router = useRouter();
@@ -88,7 +85,6 @@ export function DealForm({
   const dealType = form.watch("type") as DealType;
   const propertyId = form.watch("propertyId");
 
-  const availablePlans = plans.filter((plan) => plan.propertyId === propertyId);
   const availableTaxPolicies = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     const policies = [
@@ -116,13 +112,6 @@ export function DealForm({
   }, [dealType, propertyId, taxCandidates]);
 
   useEffect(() => {
-    if (dealType !== "installment_purchase") return;
-    if (availablePlans.length === 1) {
-      form.setValue("propertyPlanId", availablePlans[0].id);
-    }
-  }, [dealType, availablePlans, propertyId, form]);
-
-  useEffect(() => {
     const selectedPolicyId = form.getValues("taxPolicyId");
     if (
       selectedPolicyId &&
@@ -142,6 +131,9 @@ export function DealForm({
       dueOn: values.dueOn || undefined,
       rentAmount: values.rentAmount || undefined,
       depositAmount: values.depositAmount || undefined,
+      downPaymentAmount: values.downPaymentAmount || undefined,
+      installmentAmount: values.installmentAmount || undefined,
+      installmentCount: values.installmentCount || undefined,
       notes: values.notes || undefined,
       taxPolicyId: values.taxPolicyId || undefined,
     });
@@ -155,10 +147,6 @@ export function DealForm({
   const isFixedLease = dealType === "fixed_lease";
   const isPeriodicRent = dealType === "periodic_rent";
   const isLeaseLike = isFixedLease || isPeriodicRent;
-
-  const selectedPlan = plans.find(
-    (plan) => plan.id === form.watch("propertyPlanId"),
-  );
 
   const summary = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -176,13 +164,11 @@ export function DealForm({
     if (dealType === "cash_sale") {
       const amount = Number(form.watch("totalAmount") ?? 0);
       base = amount > 0 ? amount : null;
-    } else if (dealType === "installment_purchase" && selectedPlan) {
-      const count = Math.ceil(
-        selectedPlan.termMonths / periodMonths(selectedPlan.frequency),
-      );
-      base =
-        Number(selectedPlan.downPaymentAmount ?? 0) +
-        Number(selectedPlan.installmentAmount ?? 0) * count;
+    } else if (dealType === "installment_purchase") {
+      const down = Number(form.watch("downPaymentAmount") ?? 0);
+      const installment = Number(form.watch("installmentAmount") ?? 0);
+      const count = Number(form.watch("installmentCount") ?? 0);
+      base = down + installment * count;
     } else if (dealType === "fixed_lease") {
       const rent = Number(form.watch("rentAmount") ?? 0);
       const startsOn = form.watch("startsOn");
@@ -221,7 +207,7 @@ export function DealForm({
       : [];
     const totalTax = breakdown.reduce((sum, item) => sum + item.taxAmount, 0);
     return { base, breakdown, totalTax };
-  }, [taxCandidates, propertyId, dealType, selectedPlan, form]);
+  }, [taxCandidates, propertyId, dealType, form]);
 
   return (
     <Dialog
@@ -280,10 +266,11 @@ export function DealForm({
                     isRequired
                     placeholder="e.g. 5000000"
                   />
-                  <TextField
+                  <SelectField
                     form={form}
                     name="paymentMethod"
                     label="Payment method"
+                    options={paymentMethodFilter}
                     isOptional
                   />
                   <DateField
@@ -334,28 +321,40 @@ export function DealForm({
               ) : null}
 
               {dealType === "installment_purchase" ? (
-                availablePlans.length > 1 ? (
-                  <SelectField
-                    form={form}
-                    name="propertyPlanId"
-                    label="Installment plan"
-                    options={availablePlans.map((plan) => ({
-                      value: plan.id,
-                      label: `${plan.planName} · ${currency(plan.price)} · ${plan.termMonths} months`,
-                    }))}
-                    isRequired
-                  />
-                ) : availablePlans.length === 1 ? (
-                  <Text color="secondary">
-                    Plan: {availablePlans[0].planName} ·{" "}
-                    {currency(availablePlans[0].price)} ·{" "}
-                    {availablePlans[0].termMonths} months
-                  </Text>
-                ) : (
-                  <Text color="secondary">
-                    No published installment plans for this property.
-                  </Text>
-                )
+                <>
+                  <Stack direction="horizontal" gap={3}>
+                    <TextField
+                      form={form}
+                      name="downPaymentAmount"
+                      label="Down payment"
+                      isRequired
+                      placeholder="e.g. 1000000"
+                    />
+                    <TextField
+                      form={form}
+                      name="installmentAmount"
+                      label="Installment amount"
+                      isRequired
+                      placeholder="e.g. 250000"
+                    />
+                  </Stack>
+                  <Stack direction="horizontal" gap={3}>
+                    <TextField
+                      form={form}
+                      name="installmentCount"
+                      label="Number of installments"
+                      isRequired
+                      placeholder="e.g. 16"
+                    />
+                    <SelectField
+                      form={form}
+                      name="frequency"
+                      label="Frequency"
+                      options={frequencyOptions}
+                      isRequired
+                    />
+                  </Stack>
+                </>
               ) : null}
 
               {summary.base !== null ? (
@@ -366,14 +365,11 @@ export function DealForm({
                       ? " · no tax applies"
                       : ""}
                   </Text>
-                  {dealType === "installment_purchase" && selectedPlan ? (
+                  {dealType === "installment_purchase" ? (
                     <Text color="secondary">
-                      {currency(selectedPlan.downPaymentAmount)} down +{" "}
-                      {Math.ceil(
-                        selectedPlan.termMonths /
-                          periodMonths(selectedPlan.frequency),
-                      )}{" "}
-                      × {currency(selectedPlan.installmentAmount)} ={" "}
+                      {currency(form.watch("downPaymentAmount") ?? "0")} down +{" "}
+                      {form.watch("installmentCount") || "0"} ×{" "}
+                      {currency(form.watch("installmentAmount") ?? "0")} ={" "}
                       {currency(summary.base)}
                     </Text>
                   ) : (
