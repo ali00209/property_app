@@ -2,11 +2,16 @@
   "name": "property",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:generate": "npx drizzle-kit generate",
+    "db:migrate": "npx drizzle-kit migrate",
+    "db:push": "npx drizzle-kit push",
+    "db:seed": "tsx --env-file=.env scripts/seed.ts"
   },
   "dependencies": {
     "@astryxdesign/cli": "^0.5.4",
@@ -17,6 +22,7 @@
     "@astryxdesign/theme-neutral": "^0.5.4",
     "@astryxdesign/theme-stone": "^0.5.4",
     "@astryxdesign/theme-y2k": "^0.5.4",
+    "@geoman-io/leaflet-geoman-free": "^2.20.2",
     "@hookform/resolvers": "^5.9.1",
     "@stylexjs/stylex": "^0.19.0",
     "bcryptjs": "^3.0.3",
@@ -25,7 +31,6 @@
     "jose": "^6.2.12",
     "jsonwebtoken": "^9.0.3",
     "leaflet": "^1.9.4",
-    "leaflet-distortableimage": "^0.21.9",
     "lucide-react": "^1.42.0",
     "next": "16.3.4",
     "pg": "^8.23.0",

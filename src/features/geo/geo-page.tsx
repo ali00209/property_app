@@ -1,10 +1,18 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
+import "@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css";
 
 import {
   Button,
+  Dialog,
+  DialogHeader,
+  FormLayout,
   Heading,
+  Layout,
+  LayoutContent,
+  LayoutFooter,
+  LayoutHeader,
   Stack,
   Table,
   TableBody,
@@ -14,14 +22,18 @@ import {
   TableRow,
   Text,
   Switch,
+  Stepper,
+  FileInput,
+  Slider,
+  StackItem,
 } from "@astryxdesign/core";
 import { Controller, useForm } from "react-hook-form";
 import type { Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, MapPinned, Plus } from "lucide-react";
-import type { Map as LeafletMap } from "leaflet";
+import type { Map as LeafletMap, Polygon as LeafletPolygon } from "leaflet";
 import {
   areaUnitFilter,
   unitTypeString,
@@ -31,6 +43,7 @@ import {
 import type { City, Unit, Society, SocietySector } from "@/types";
 import {
   FormDialog,
+  FormWizard,
   SelectField,
   TextField,
   NumberField as NumField,
@@ -96,6 +109,19 @@ function pointFromWkt(
   return { lat, lng };
 }
 
+function pointsFromLayer(layer: LeafletPolygon | null): LatLngPair[] {
+  if (!layer) return [];
+  const ring = layer.getLatLngs()[0] as { lat: number; lng: number }[];
+  return ring.map(({ lng, lat }) => [lng, lat] as LatLngPair);
+}
+
+function samePoints(a: LatLngPair[], b: LatLngPair[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((p, i) => p[0] === b[i][0] && p[1] === b[i][1])
+  );
+}
+
 function MapEditor({
   points,
   onChange,
@@ -108,13 +134,23 @@ function MapEditor({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const modRef = useRef<typeof import("leaflet") | null>(null);
-  const overlayRef = useRef<import("leaflet").LayerGroup | null>(null);
-  const pointsRef = useRef(points);
+  const layerRef = useRef<LeafletPolygon | null>(null);
+  const onChangeRef = useRef(onChange);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    pointsRef.current = points;
-  }, [points]);
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  // Geoman fires pm:create / pm:remove on the map, but pm:edit and
+  // pm:markerdragend only on the layer, so edits are watched per layer.
+  function trackLayer(layer: LeafletPolygon) {
+    layerRef.current?.off();
+    layerRef.current = layer;
+    const push = () => onChangeRef.current(pointsFromLayer(layer));
+    layer.on("pm:edit", push);
+    layer.on("pm:markerdragend", push);
+  }
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -122,6 +158,7 @@ function MapEditor({
 
     const init = async () => {
       const L = await import("leaflet");
+      await import("@geoman-io/leaflet-geoman-free");
       if (disposed || !containerRef.current) return;
       modRef.current = L;
       const lat = focus?.lat ?? 31.5204;
@@ -131,16 +168,49 @@ function MapEditor({
         focus ? 15 : 13,
       );
       mapRef.current = map;
-      overlayRef.current = L.layerGroup().addTo(map);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution:
           '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       }).addTo(map);
-      map.on("click", (e: { latlng: { lat: number; lng: number } }) => {
-        const current = pointsRef.current;
-        onChange([...current, [e.latlng.lng, e.latlng.lat]]);
+
+      map.pm.setGlobalOptions({
+        snappable: true,
+        finishOn: "dblclick",
+        pathOptions: { color: "#16a34a", fillOpacity: 0.25 },
+        templineStyle: { color: "#16a34a" },
+        hintlineStyle: { color: "#16a34a", dashArray: [5, 5] },
       });
+      map.pm.addControls({
+        position: "topleft",
+        oneBlock: true,
+        drawPolygon: true,
+        editMode: true,
+        removalMode: true,
+        drawMarker: false,
+        drawCircleMarker: false,
+        drawPolyline: false,
+        drawRectangle: false,
+        drawText: false,
+        drawCircle: false,
+        cutPolygon: false,
+        dragMode: false,
+        rotateMode: false,
+        optionsControls: false,
+      });
+
+      map.on("pm:create", (e) => {
+        if (e.shape !== "Polygon") return;
+        layerRef.current?.remove();
+        trackLayer(e.layer as LeafletPolygon);
+        onChangeRef.current(pointsFromLayer(layerRef.current));
+      });
+      map.on("pm:remove", (e) => {
+        if (e.layer !== layerRef.current) return;
+        layerRef.current = null;
+        onChangeRef.current([]);
+      });
+
       setReady(true);
     };
 
@@ -158,32 +228,30 @@ function MapEditor({
   useEffect(() => {
     const map = mapRef.current;
     const L = modRef.current;
-    const overlay = overlayRef.current;
-    if (!map || !L || !overlay || !ready) return;
-    overlay.clearLayers();
+    if (!map || !L || !ready) return;
 
-    if (points.length === 0) return;
+    const current = layerRef.current;
+    const unchanged =
+      current === null
+        ? points.length === 0
+        : samePoints(pointsFromLayer(current), points);
+    if (unchanged) return;
+
+    current?.remove();
+    layerRef.current = null;
+    if (points.length < 3) return;
+
     const latlngs = points.map(([lng, lat]) => [lat, lng] as [number, number]);
-    if (points.length >= 3) {
-      L.polygon(latlngs, { color: "#16a34a", fillOpacity: 0.25 }).addTo(
-        overlay,
-      );
-    } else if (points.length >= 2) {
-      L.polyline(latlngs, { color: "#16a34a" }).addTo(overlay);
-    }
-    for (const [lng, lat] of points) {
-      L.circleMarker([lat, lng], {
-        radius: 6,
-        color: "#ffffff",
-        weight: 2,
-        fillColor: "#dc2626",
-        fillOpacity: 1,
-      }).addTo(overlay);
-    }
-    if (points.length >= 2) {
-      map.fitBounds(L.latLngBounds(latlngs), { padding: [30, 30] });
-    }
+    const layer = L.polygon(latlngs).addTo(map);
+    trackLayer(layer);
+    map.fitBounds(L.latLngBounds(latlngs), { padding: [30, 30] });
   }, [points, ready]);
+
+  function clearBoundary() {
+    layerRef.current?.remove();
+    layerRef.current = null;
+    onChangeRef.current([]);
+  }
 
   return (
     <Stack gap={2}>
@@ -191,27 +259,21 @@ function MapEditor({
         ref={containerRef}
         style={{ width: "100%", height: 420, borderRadius: 8, zIndex: 0 }}
       />
-      {points.length > 0 ? (
-        <Stack direction="horizontal" hAlign="between" vAlign="center">
-          <Text type="body" color="secondary">
-            {points.length} marker{points.length === 1 ? "" : "s"} — click the
-            map to add corners,{" "}
-            {points.length >= 3
-              ? "polygon is ready to save."
-              : "add at least 3 corners."}
-          </Text>
+      <Stack direction="horizontal" hAlign="between" vAlign="center">
+        <Text type="body" color="secondary">
+          {points.length >= 3
+            ? `${points.length} corners — drag them to adjust, or use the remove tool to clear.`
+            : "Use the polygon tool to draw the boundary, then finish on the first corner or with a double click."}
+        </Text>
+        {points.length > 0 ? (
           <Button
-            label="Undo last"
+            label="Clear boundary"
             size="sm"
             variant="ghost"
-            onClick={() => onChange(points.slice(0, -1))}
+            onClick={clearBoundary}
           />
-        </Stack>
-      ) : (
-        <Text type="body" color="secondary">
-          Click on the map to mark the corners of the boundary.
-        </Text>
-      )}
+        ) : null}
+      </Stack>
     </Stack>
   );
 }
@@ -221,11 +283,13 @@ function PointPicker({
   onChange,
   boundary,
   cityCenter,
+  overlayImage,
 }: {
   point: { lat: number; lng: number } | null;
   onChange: (point: { lat: number; lng: number }) => void;
   boundary?: string | null;
   cityCenter?: string | null;
+  overlayImage?: string | null;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -264,6 +328,7 @@ function PointPicker({
         onChange({ lat: e.latlng.lat, lng: e.latlng.lng });
       });
       setReady(true);
+      setTimeout(() => map.invalidateSize(), 150);
     };
 
     init();
@@ -288,10 +353,16 @@ function PointPicker({
       ([lng, lat]) => [lat, lng] as [number, number],
     );
     if (latlngs.length >= 3) {
+      if (overlayImage) {
+        L.imageOverlay(overlayImage, L.latLngBounds(latlngs), {
+          opacity: 0.65,
+          interactive: false,
+        }).addTo(overlay);
+      }
       L.polygon(latlngs, {
         color: "#9333ea",
         weight: 1.5,
-        fillOpacity: 0.12,
+        fillOpacity: overlayImage ? 0.05 : 0.12,
         interactive: false,
       }).addTo(overlay);
     }
@@ -304,7 +375,7 @@ function PointPicker({
       });
       L.marker([point.lat, point.lng], { icon }).addTo(overlay);
     }
-  }, [point, boundary, ready]);
+  }, [point, boundary, overlayImage, ready]);
 
   return (
     <Stack gap={2}>
@@ -321,6 +392,124 @@ function PointPicker({
         ) : (
           "Click on the map to place the unit location. The society outline is shown for reference."
         )}
+      </Text>
+    </Stack>
+  );
+}
+
+function BoundaryImageOverlay({
+  points,
+  imageUrl,
+  opacity,
+  focus,
+}: {
+  points: LatLngPair[];
+  imageUrl: string | null;
+  opacity: number;
+  focus?: { lat: number; lng: number } | null;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<LeafletMap | null>(null);
+  const modRef = useRef<typeof import("leaflet") | null>(null);
+  const overlayRef = useRef<import("leaflet").LayerGroup | null>(null);
+  const imageLayerRef = useRef<import("leaflet").ImageOverlay | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    let disposed = false;
+
+    const init = async () => {
+      const L = await import("leaflet");
+      if (disposed || !containerRef.current) return;
+      modRef.current = L;
+      const map = L.map(containerRef.current, { zoomControl: true });
+      mapRef.current = map;
+      overlayRef.current = L.layerGroup().addTo(map);
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      }).addTo(map);
+
+      const latlngs = points.map(
+        ([lng, lat]) => [lat, lng] as [number, number],
+      );
+      if (latlngs.length >= 3) {
+        map.fitBounds(L.latLngBounds(latlngs), { padding: [30, 30] });
+      } else {
+        const lat = focus?.lat ?? 31.5204;
+        const lng = focus?.lng ?? 74.3587;
+        map.setView([lat, lng], focus ? 15 : 13);
+      }
+      setReady(true);
+      setTimeout(() => map.invalidateSize(), 150);
+    };
+
+    init();
+    return () => {
+      disposed = true;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const L = modRef.current;
+    const overlay = overlayRef.current;
+    if (!map || !L || !overlay || !ready) return;
+
+    overlay.clearLayers();
+    imageLayerRef.current = null;
+
+    if (points.length < 3) return;
+
+    const latlngs = points.map(
+      ([lng, lat]) => [lat, lng] as [number, number],
+    );
+    const bounds = L.latLngBounds(latlngs);
+
+    if (imageUrl) {
+      L.imageOverlay(imageUrl, bounds, {
+        opacity,
+        interactive: false,
+      }).addTo(overlay);
+    }
+
+    L.polygon(latlngs, {
+      color: "#9333ea",
+      weight: 2,
+      fillOpacity: imageUrl ? 0.05 : 0.2,
+      dashArray: "4, 4",
+      interactive: false,
+    }).addTo(overlay);
+  }, [points, imageUrl, opacity, ready]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const L = modRef.current;
+    if (!map || !L || !ready || points.length < 3) return;
+    const latlngs = points.map(
+      ([lng, lat]) => [lat, lng] as [number, number],
+    );
+    map.fitBounds(L.latLngBounds(latlngs), { padding: [30, 30] });
+  }, [points, ready]);
+
+  return (
+    <Stack gap={2}>
+      <div
+        ref={containerRef}
+        style={{ width: "100%", height: 380, borderRadius: 8, zIndex: 0 }}
+      />
+      <Text type="body" color="secondary">
+        {imageUrl
+          ? "Image overlaid across the marked boundary. You can adjust the opacity slider to check alignment with the map."
+          : "Boundary outline shown. Choose an image above to overlay it on top of these boundaries."}
       </Text>
     </Stack>
   );
@@ -424,12 +613,17 @@ function SocietyDialog({
     defaultValues: { ...societyDefaults, cityId },
     mode: "onBlur",
   });
+  const [step, setStep] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [points, setPoints] = useState<LatLngPair[]>([]);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [opacity, setOpacity] = useState<number>(0.75);
 
   useEffect(() => {
     if (!isOpen) return;
+    setStep(0);
     form.reset(
       editing
         ? {
@@ -438,25 +632,81 @@ function SocietyDialog({
             kind: editing.kind,
             developer: editing.developer ?? null,
             regulatoryAuthority: editing.regulatoryAuthority ?? null,
+            boundary: editing.boundary ?? "",
+            coverImage: editing.coverImage ?? null,
             isActive: editing.isActive,
           }
         : { ...societyDefaults, cityId },
     );
     setPoints(pointsFromPolygonWkt(editing?.boundary));
+    setImageFile(null);
+    setImageUrl(editing?.coverImage ?? null);
+    setOpacity(0.75);
     setErrorMessage(null);
   }, [isOpen, editing, cityId, form]);
+
+  const previewUrl = useMemo(() => {
+    if (imageFile) {
+      return URL.createObjectURL(imageFile);
+    }
+    return imageUrl;
+  }, [imageFile, imageUrl]);
+
+  useEffect(() => {
+    if (!previewUrl || !imageFile) return;
+    return () => {
+      URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl, imageFile]);
 
   const city = cities.find((c) => c.id === cityId);
   const cityCenter = city?.centerPoint;
   const focus = editing ? null : pointFromWkt(cityCenter ?? null);
 
   const submit = form.handleSubmit(async (values) => {
-    const payload = {
-      ...values,
-      boundary: points.length >= 3 ? polygonWktFromPoints(points) : "",
-    };
+    if (isSubmitting) return;
     setIsSubmitting(true);
     setErrorMessage(null);
+
+    let finalCoverImage: string | null = imageUrl;
+
+    if (imageFile) {
+      try {
+        const uploadData = new FormData();
+        uploadData.append("coverImage", imageFile);
+        const res = await fetch("/api/uploads", {
+          method: "POST",
+          body: uploadData,
+        });
+        const json = (await res.json()) as {
+          ok?: boolean;
+          files?: Array<{ url: string }>;
+          error?: string;
+        };
+        if (json.ok && json.files?.[0]?.url) {
+          finalCoverImage = json.files[0].url;
+        } else {
+          setIsSubmitting(false);
+          setErrorMessage(json.error ?? "Failed to upload boundary image.");
+          return;
+        }
+      } catch (err) {
+        setIsSubmitting(false);
+        setErrorMessage(
+          err instanceof Error
+            ? err.message
+            : "Failed to upload boundary image.",
+        );
+        return;
+      }
+    }
+
+    const payload: SocietyFormValues = {
+      ...values,
+      boundary: points.length >= 3 ? polygonWktFromPoints(points) : "",
+      coverImage: finalCoverImage,
+    };
+
     const result = editing
       ? await updateSocietyAction(editing.id, payload)
       : await createSocietyAction(payload);
@@ -469,76 +719,201 @@ function SocietyDialog({
     router.refresh();
   });
 
+  const next = async () => {
+    if (step === 0) {
+      const valid = await form.trigger(["cityId", "name", "kind"]);
+      if (valid) {
+        setErrorMessage(null);
+        setStep(1);
+      }
+    } else if (step === 1) {
+      if (points.length > 0 && points.length < 3) {
+        setErrorMessage(
+          "Please finish drawing the boundary polygon (at least 3 corners) before continuing.",
+        );
+        return;
+      }
+      setErrorMessage(null);
+      setStep(2);
+    }
+  };
+
   return (
-    <FormDialog
+    <Dialog
       isOpen={isOpen}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={editing ? "Edit society" : "New society"}
-      subtitle="Societies are the neighbourhoods shown on the map."
-      onSubmit={() => submit()}
-      isSubmitting={isSubmitting}
-      submitLabel={editing ? "Save changes" : "Create society"}
+      purpose="form"
       width={800}
     >
-      <Stack gap={3}>
-        <SelectField
-          form={form}
-          name="cityId"
-          label="City"
-          isRequired
-          options={cities.map((c) => ({ value: c.id, label: c.name }))}
-        />
-        <TextField
-          form={form}
-          name="name"
-          label="Name"
-          isRequired
-          placeholder="e.g. DHA Phase 5"
-        />
-        <SelectField
-          form={form}
-          name="kind"
-          label="Kind"
-          isRequired
-          options={societyKindFilter.map((k) => ({
-            value: k.value,
-            label: k.label,
-          }))}
-        />
-        <TextField
-          form={form}
-          name="developer"
-          label="Developer"
-          isOptional
-          placeholder="e.g. DHA Lahore"
-        />
-        <TextField
-          form={form}
-          name="regulatoryAuthority"
-          label="Regulatory authority"
-          isOptional
-          placeholder="e.g. CDA, LDA, DHA"
-        />
-        {isOpen ? (
-          <MapEditor points={points} onChange={setPoints} focus={focus} />
-        ) : null}
-        <Controller
-          control={form.control}
-          name="isActive"
-          render={({ field }) => (
-            <Switch
-              label="Active"
-              description="Inactive societies are hidden from new listings."
-              value={Boolean(field.value)}
-              onChange={field.onChange}
+      <Layout
+        header={
+          <LayoutHeader>
+            <DialogHeader
+              title={editing ? "Edit society" : "New society"}
+              subtitle={
+                step === 0
+                  ? "Societies are the neighbourhoods shown on the map."
+                  : step === 1
+                    ? "Mark the perimeter of the society on the map."
+                    : "Overlay a master plan or layout image over the marked boundary."
+              }
             />
-          )}
-        />
-        {errorMessage ? <Text color="accent">{errorMessage}</Text> : null}
-      </Stack>
-    </FormDialog>
+          </LayoutHeader>
+        }
+        content={
+          <LayoutContent>
+            {errorMessage ? <Text color="accent">{errorMessage}</Text> : null}
+            {step === 0 ? (
+              <FormLayout>
+                <SelectField
+                  form={form}
+                  name="cityId"
+                  label="City"
+                  isRequired
+                  options={cities.map((c) => ({ value: c.id, label: c.name }))}
+                />
+                <TextField
+                  form={form}
+                  name="name"
+                  label="Name"
+                  isRequired
+                  placeholder="e.g. DHA Phase 5"
+                />
+                <SelectField
+                  form={form}
+                  name="kind"
+                  label="Kind"
+                  isRequired
+                  options={societyKindFilter.map((k) => ({
+                    value: k.value,
+                    label: k.label,
+                  }))}
+                />
+                <TextField
+                  form={form}
+                  name="developer"
+                  label="Developer"
+                  isOptional
+                  placeholder="e.g. DHA Lahore"
+                />
+                <TextField
+                  form={form}
+                  name="regulatoryAuthority"
+                  label="Regulatory authority"
+                  isOptional
+                  placeholder="e.g. CDA, LDA, DHA"
+                />
+                <Controller
+                  control={form.control}
+                  name="isActive"
+                  render={({ field }) => (
+                    <Switch
+                      label="Active"
+                      description="Inactive societies are hidden from new listings."
+                      value={Boolean(field.value)}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
+              </FormLayout>
+            ) : null}
+            {isOpen && step === 1 ? (
+              <MapEditor points={points} onChange={setPoints} focus={focus} />
+            ) : null}
+            {isOpen && step === 2 ? (
+              <Stack gap={3}>
+                {points.length >= 3 ? (
+                  <>
+                    <Stack direction="horizontal" gap={3} vAlign="end">
+                      <StackItem size="fill">
+                        <FileInput
+                          label="Boundary overlay image"
+                          description="Upload a master plan, layout plan, or map image to overlay on the marked boundaries."
+                          value={imageFile}
+                          onChange={(files) => {
+                            const file = Array.isArray(files)
+                              ? files[0]
+                              : files;
+                            setImageFile(file ?? null);
+                          }}
+                          accept="image/*"
+                          isOptional
+                        />
+                      </StackItem>
+                      {previewUrl ? (
+                        <Button
+                          label="Remove image"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setImageFile(null);
+                            setImageUrl(null);
+                          }}
+                        />
+                      ) : null}
+                    </Stack>
+
+                    {imageUrl && !imageFile ? (
+                      <Text type="body" color="secondary">
+                        Current saved image: {imageUrl.split("/").pop()}
+                      </Text>
+                    ) : null}
+
+                    {previewUrl ? (
+                      <Slider
+                        label="Overlay opacity"
+                        value={Math.round(opacity * 100)}
+                        onChange={(val: number | [number, number]) =>
+                          setOpacity(
+                            typeof val === "number" ? val / 100 : val[0] / 100,
+                          )
+                        }
+                        min={10}
+                        max={100}
+                        step={5}
+                        formatValue={(val) => `${val}%`}
+                      />
+                    ) : null}
+
+                    <BoundaryImageOverlay
+                      points={points}
+                      imageUrl={previewUrl}
+                      opacity={opacity}
+                      focus={focus}
+                    />
+                  </>
+                ) : (
+                  <Stack gap={2}>
+                    <Text type="body" color="secondary">
+                      No boundary has been marked. Please go back to the Boundary
+                      step to mark the society boundary on the map first to overlay an image.
+                    </Text>
+                  </Stack>
+                )}
+              </Stack>
+            ) : null}
+          </LayoutContent>
+        }
+        footer={
+          <LayoutFooter>
+            <FormWizard
+              step={step}
+              steps={["Details", "Boundary", "Image Overlay"]}
+              onBack={() => {
+                setErrorMessage(null);
+                setStep((value) => value - 1);
+              }}
+              onNext={next}
+              onSubmit={() => submit()}
+              canSubmit={step === 2}
+              isSubmitting={isSubmitting}
+            />
+          </LayoutFooter>
+        }
+      />
+    </Dialog>
   );
 }
 
@@ -617,6 +992,7 @@ function UnitDialog({
   editing,
   sectorId,
   societyBoundary,
+  societyCoverImage,
   cityCenter,
 }: {
   isOpen: boolean;
@@ -624,6 +1000,7 @@ function UnitDialog({
   editing: Unit | null;
   sectorId: string;
   societyBoundary?: string | null;
+  societyCoverImage?: string | null;
   cityCenter?: string | null;
 }) {
   const router = useRouter();
@@ -632,19 +1009,22 @@ function UnitDialog({
     defaultValues: { ...unitDefaults, sectorId },
     mode: "onBlur",
   });
+  const [step, setStep] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [point, setPoint] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
+    setStep(0);
     form.reset(
       editing
         ? {
             sectorId,
             unitNumber: editing.unitNumber,
             streetNumber: editing.streetNumber ?? null,
-            areaValue: editing.areaValue ?? null,
+            areaValue:
+              editing.areaValue != null ? Number(editing.areaValue) : null,
             areaUnit: editing.areaUnit ?? null,
             type: editing.type ?? null,
           }
@@ -678,80 +1058,111 @@ function UnitDialog({
     router.refresh();
   });
 
+  const next = async () => {
+    const valid = await form.trigger(["unitNumber"]);
+    if (valid) setStep((value) => value + 1);
+  };
+
   return (
-    <FormDialog
+    <Dialog
       isOpen={isOpen}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={editing ? `Edit unit ${editing.unitNumber}` : "New unit"}
-      subtitle="Mark the unit location on the map. Optionally add area and type."
-      onSubmit={() => submit()}
-      isSubmitting={isSubmitting}
-      submitLabel={editing ? "Save changes" : "Create unit"}
+      purpose="form"
       width={720}
     >
-      <Stack gap={3}>
-        {isOpen ? (
-          <PointPicker
-            point={point}
-            onChange={setPoint}
-            boundary={societyBoundary}
-            cityCenter={cityCenter}
-          />
-        ) : null}
-        <TextField
-          form={form}
-          name="unitNumber"
-          label="Unit number"
-          isRequired
-          placeholder="e.g. Unit 12-B"
-        />
-        <TextField
-          form={form}
-          name="streetNumber"
-          label="Street number"
-          isOptional
-          placeholder="e.g. Street 4"
-        />
-        <Stack direction="horizontal" gap={3}>
-          <NumField
-            form={form}
-            name="areaValue"
-            label="Area"
-            isOptional
-            placeholder="0"
-          />
-          <SelectField
-            form={form}
-            name="areaUnit"
-            label="Unit"
-            isOptional
-            options={[
-              { value: "", label: "—" },
-              ...areaUnitFilter.map((u) => ({
-                value: u.value,
-                label: u.label,
-              })),
-            ]}
-          />
-          <SelectField
-            form={form}
-            name="type"
-            label="Unit type"
-            isOptional
-            options={[
-              { value: "", label: "—" },
-              ...unitTypeString.map((t) => ({
-                value: t,
-                label: t.replace("_", " "),
-              })),
-            ]}
-          />
-        </Stack>
-        {errorMessage ? <Text color="accent">{errorMessage}</Text> : null}
-      </Stack>
-    </FormDialog>
+      <Layout
+        header={
+          <LayoutHeader>
+            <DialogHeader
+              title={editing ? `Edit unit ${editing.unitNumber}` : "New unit"}
+              subtitle="Mark the unit location on the map. Optionally add area and type."
+            />
+          </LayoutHeader>
+        }
+        content={
+          <LayoutContent>
+            {errorMessage ? <Text color="accent">{errorMessage}</Text> : null}
+            {step === 0 ? (
+              <FormLayout>
+                <TextField
+                  form={form}
+                  name="unitNumber"
+                  label="Unit number"
+                  isRequired
+                  placeholder="e.g. Unit 12-B"
+                />
+                <TextField
+                  form={form}
+                  name="streetNumber"
+                  label="Street number"
+                  isOptional
+                  placeholder="e.g. Street 4"
+                />
+                <Stack direction="horizontal" gap={3}>
+                  <NumField
+                    form={form}
+                    name="areaValue"
+                    label="Area"
+                    isOptional
+                    placeholder="0"
+                  />
+                  <SelectField
+                    form={form}
+                    name="areaUnit"
+                    label="Unit"
+                    isOptional
+                    options={[
+                      { value: "", label: "—" },
+                      ...areaUnitFilter.map((u) => ({
+                        value: u.value,
+                        label: u.label,
+                      })),
+                    ]}
+                  />
+                  <SelectField
+                    form={form}
+                    name="type"
+                    label="Unit type"
+                    isOptional
+                    options={[
+                      { value: "", label: "—" },
+                      ...unitTypeString.map((t) => ({
+                        value: t,
+                        label: t.replace("_", " "),
+                      })),
+                    ]}
+                  />
+                </Stack>
+              </FormLayout>
+            ) : null}
+            {isOpen && step === 1 ? (
+              <PointPicker
+                point={point}
+                onChange={setPoint}
+                boundary={societyBoundary}
+                cityCenter={cityCenter}
+                overlayImage={societyCoverImage}
+              />
+            ) : null}
+          </LayoutContent>
+        }
+        footer={
+          <LayoutFooter>
+            <FormWizard
+              step={step}
+              steps={["Details", "Location"]}
+              onBack={() => setStep((value) => value - 1)}
+              onNext={next}
+              onSubmit={() => submit()}
+              canSubmit={step === 1 && Boolean(point)}
+              isSubmitting={isSubmitting}
+            />
+          </LayoutFooter>
+        }
+      />
+    </Dialog>
   );
 }
 
@@ -1193,6 +1604,7 @@ export function GeoPage({ tree }: { tree: GeoTree }) {
         editing={editingUnit}
         sectorId={selectedSectorId ?? editingUnit?.sectorId ?? ""}
         societyBoundary={unitSociety?.boundary ?? null}
+        societyCoverImage={unitSociety?.coverImage ?? null}
         cityCenter={unitCity?.centerPoint ?? null}
       />
 

@@ -29,3 +29,13 @@ export function currency(
     maximumFractionDigits: 0,
   }).format(Number(value))
 }
+
+export function getDatabaseUrl(): string {
+  const url = process.env.DATABASE_URL
+  if (!url) {
+    console.error("DATABASE_URL is required")
+    process.exit(1);
+  }
+
+return url
+}

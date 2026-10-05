@@ -112,6 +112,7 @@ export async function getMapPayload(user: SessionUser): Promise<MapPayload> {
       name: schema.societies.name,
       city: schema.cities.name,
       boundary: sql<string>`ST_AsText(${schema.societies.boundary}::geometry)`,
+      coverImage: schema.societies.coverImage,
       lat: sql<number>`ST_Y(ST_Centroid(${schema.societies.boundary}::geometry)::geometry)`,
       lng: sql<number>`ST_X(ST_Centroid(${schema.societies.boundary}::geometry)::geometry)`,
     })
@@ -129,6 +130,7 @@ export async function getMapPayload(user: SessionUser): Promise<MapPayload> {
       lng: r.lng,
       count: propCountBySociety.get(r.id) ?? 0,
       boundary: r.boundary,
+      coverImage: r.coverImage,
     });
   }
 

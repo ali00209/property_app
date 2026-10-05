@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "8acb9c8b-b736-4f7e-a130-b4b06dd7b1d9",
+  "id": "bbb3ae88-558e-40f4-869d-4b2f0db287b0",
   "prevIds": [
-    "2581a6f4-57bf-46cf-ae43-2c97f84b8b49"
+    "00000000-0000-0000-0000-000000000000"
   ],
   "ddl": [
     {
@@ -31,7 +31,7 @@
         "documents",
         "deals",
         "societies",
-        "plots"
+        "units"
       ],
       "name": "activity_entity_type",
       "entityType": "enums",
@@ -252,7 +252,7 @@
         "commercial",
         "industrial",
         "land",
-        "plot",
+        "unit",
         "apartment",
         "house",
         "office",
@@ -389,12 +389,6 @@
     },
     {
       "isRlsEnabled": false,
-      "name": "plots",
-      "entityType": "tables",
-      "schema": "public"
-    },
-    {
-      "isRlsEnabled": false,
       "name": "properties",
       "entityType": "tables",
       "schema": "public"
@@ -444,6 +438,12 @@
     {
       "isRlsEnabled": false,
       "name": "tax_policies",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "units",
       "entityType": "tables",
       "schema": "public"
     },
@@ -2485,149 +2485,6 @@
       "name": "id",
       "entityType": "columns",
       "schema": "public",
-      "table": "plots"
-    },
-    {
-      "type": "uuid",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "sector_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "plots"
-    },
-    {
-      "type": "varchar(50)",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "plot_number",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "plots"
-    },
-    {
-      "type": "varchar(50)",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "street_number",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "plots"
-    },
-    {
-      "type": "geography(Polygon,4326)",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "geometry",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "plots"
-    },
-    {
-      "type": "geography(Point,4326)",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "centroid",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "plots"
-    },
-    {
-      "type": "numeric(10,2)",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "area_value",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "plots"
-    },
-    {
-      "type": "area_unit",
-      "typeSchema": "public",
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "area_unit",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "plots"
-    },
-    {
-      "type": "property_type",
-      "typeSchema": "public",
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "plot_type",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "plots"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "now()",
-      "generated": null,
-      "identity": null,
-      "name": "created_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "plots"
-    },
-    {
-      "type": "timestamp",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "now()",
-      "generated": null,
-      "identity": null,
-      "name": "updated_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "plots"
-    },
-    {
-      "type": "uuid",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "gen_random_uuid()",
-      "generated": null,
-      "identity": null,
-      "name": "id",
-      "entityType": "columns",
-      "schema": "public",
       "table": "properties"
     },
     {
@@ -2755,7 +2612,7 @@
       "default": null,
       "generated": null,
       "identity": null,
-      "name": "plot_id",
+      "name": "unit_id",
       "entityType": "columns",
       "schema": "public",
       "table": "properties"
@@ -3528,19 +3385,6 @@
       "table": "society_sectors"
     },
     {
-      "type": "geography(Polygon,4326)",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "boundary",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "society_sectors"
-    },
-    {
       "type": "timestamp",
       "typeSchema": null,
       "notNull": true,
@@ -3786,6 +3630,136 @@
       "entityType": "columns",
       "schema": "public",
       "table": "tax_policies"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "gen_random_uuid()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "units"
+    },
+    {
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "sector_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "units"
+    },
+    {
+      "type": "varchar(50)",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "unit_number",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "units"
+    },
+    {
+      "type": "varchar(50)",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "street_number",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "units"
+    },
+    {
+      "type": "geography(Point,4326)",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "centroid",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "units"
+    },
+    {
+      "type": "numeric(10,2)",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "area_value",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "units"
+    },
+    {
+      "type": "area_unit",
+      "typeSchema": "public",
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "area_unit",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "units"
+    },
+    {
+      "type": "property_type",
+      "typeSchema": "public",
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "type",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "units"
+    },
+    {
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "units"
+    },
+    {
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "units"
     },
     {
       "type": "uuid",
@@ -4374,55 +4348,6 @@
       "nameExplicit": true,
       "columns": [
         {
-          "value": "sector_id",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        },
-        {
-          "value": "plot_number",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": true,
-      "where": null,
-      "with": "",
-      "method": "btree",
-      "concurrently": false,
-      "name": "plots_sector_plot_number_idx",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "plots"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
-          "value": "geometry",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "with": "",
-      "method": "gist",
-      "concurrently": false,
-      "name": "plots_geometry_gix",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "plots"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
           "value": "slug",
           "isExpression": false,
           "asc": true,
@@ -4759,27 +4684,6 @@
       "nameExplicit": true,
       "columns": [
         {
-          "value": "boundary",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "with": "",
-      "method": "gist",
-      "concurrently": false,
-      "name": "society_sectors_boundary_gix",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "society_sectors"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
           "value": "active",
           "isExpression": false,
           "asc": true,
@@ -4824,6 +4728,34 @@
       "entityType": "indexes",
       "schema": "public",
       "table": "tax_policies"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "sector_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "unit_number",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "units_sector_unit_number_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "units"
     },
     {
       "nameExplicit": false,
@@ -5236,23 +5168,6 @@
     {
       "nameExplicit": false,
       "columns": [
-        "sector_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "society_sectors",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "plots_sector_id_society_sectors_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "plots"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
         "city_id"
       ],
       "schemaTo": "public",
@@ -5304,16 +5219,16 @@
     {
       "nameExplicit": false,
       "columns": [
-        "plot_id"
+        "unit_id"
       ],
       "schemaTo": "public",
-      "tableTo": "plots",
+      "tableTo": "units",
       "columnsTo": [
         "id"
       ],
       "onUpdate": "NO ACTION",
       "onDelete": "NO ACTION",
-      "name": "properties_plot_id_plots_id_fkey",
+      "name": "properties_unit_id_units_id_fkey",
       "entityType": "fks",
       "schema": "public",
       "table": "properties"
@@ -5487,6 +5402,23 @@
       "entityType": "fks",
       "schema": "public",
       "table": "tax_policies"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "sector_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "society_sectors",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "units_sector_id_society_sectors_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "units"
     },
     {
       "nameExplicit": false,
@@ -5677,16 +5609,6 @@
         "id"
       ],
       "nameExplicit": false,
-      "name": "plots_pkey",
-      "schema": "public",
-      "table": "plots",
-      "entityType": "pks"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
       "name": "properties_pkey",
       "schema": "public",
       "table": "properties",
@@ -5770,6 +5692,16 @@
       "name": "tax_policies_pkey",
       "schema": "public",
       "table": "tax_policies",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "units_pkey",
+      "schema": "public",
+      "table": "units",
       "entityType": "pks"
     },
     {

@@ -4,10 +4,11 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { exit } from "process";
 import * as schema from "../src/db/schema";
+import { getDatabaseUrl } from "@/lib/utils";
 
 config();
 
-const DATABASE_URL = process.env.DATABASE_URL;
+const DATABASE_URL = getDatabaseUrl();
 
 if (!DATABASE_URL) {
   console.error("DATABASE_URL is not defined in .env file");
@@ -81,49 +82,49 @@ async function main() {
         email: "admin@gmail.com",
         password: hashPassword,
         roleId: roles.find((r) => r.role === "admin")!.id,
-        phone: "+1234567890",
+        phone: "+921234567890",
       },
       {
         name: "John",
         email: "john@gmail.com",
         password: hashPassword,
         roleId: roles.find((r) => r.role === "client")!.id,
-        phone: "+1987654321",
+        phone: "+921987654321",
       },
       {
         name: "Manager",
         email: "manager@gmail.com",
         password: hashPassword,
         roleId: roles.find((r) => r.role === "property_manager")!.id,
-        phone: "+1122334455",
+        phone: "+921122334455",
       },
       {
         name: "Accountant",
         email: "accountant@gmail.com",
         password: hashPassword,
         roleId: roles.find((r) => r.role === "accountant")!.id,
-        phone: "+1122334455",
+        phone: "+921122334456",
       },
       {
         name: "Owner",
         email: "owner@gmail.com",
         password: hashPassword,
         roleId: roles.find((r) => r.role === "owner")!.id,
-        phone: "+1122334455",
+        phone: "+921122334457",
       },
       {
         name: "Tenant",
         email: "tenant@gmail.com",
         password: hashPassword,
         roleId: roles.find((r) => r.role === "tenant")!.id,
-        phone: "+1122334455",
+        phone: "+921122334458",
       },
       {
         name: "Maintenance Staff",
         email: "maintenance@gmail.com",
         password: hashPassword,
         roleId: roles.find((r) => r.role === "maintenance_staff")!.id,
-        phone: "+1122334455",
+        phone: "+921122334459",
       },
     ];
     const users = await db.insert(schema.users).values(userValues).returning();

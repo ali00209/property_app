@@ -22,7 +22,13 @@ import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import type { Resolver } from "react-hook-form";
 import { listingPurposeFilter } from "@/lib/constants";
-import { FileField, FormWizard, NumberField, SelectField, TextField } from "@/components/ui";
+import {
+  FileField,
+  FormWizard,
+  NumberField,
+  SelectField,
+  TextField,
+} from "@/components/ui";
 import { createPropertyAction, updatePropertyAction } from "./actions";
 import { propertySchema } from "./validations";
 import type { PropertyFormValues } from "./validations";
@@ -103,7 +109,8 @@ export function PropertyForm({
     if (!isOpen) return;
     setStep(0);
     setErrorMessage(null);
-    initialCityIdRef.current = editing?.cityId ?? editing?.address?.cityId ?? "";
+    initialCityIdRef.current =
+      editing?.cityId ?? editing?.address?.cityId ?? "";
     setCityId(initialCityIdRef.current);
     setSocietyId(editing?.societyId ?? "");
     setSectorId(editing?.sectorId ?? "");
@@ -123,7 +130,9 @@ export function PropertyForm({
         email: owner.user?.email ?? "",
         phone: owner.user?.phone ?? "",
         percentage:
-          owner.ownershipPercentage != null ? String(owner.ownershipPercentage) : "",
+          owner.ownershipPercentage != null
+            ? String(owner.ownershipPercentage)
+            : "",
       })) ?? [],
     );
     form.reset({
@@ -132,12 +141,16 @@ export function PropertyForm({
       description: editing?.description ?? "",
       listingPurpose: editing?.listingPurpose ?? "sale",
       price: editing ? Number(editing.price) : 0,
-      monthlyRent: editing?.monthlyRent ? Number(editing.monthlyRent) : undefined,
+      monthlyRent: editing?.monthlyRent
+        ? Number(editing.monthlyRent)
+        : undefined,
       bedrooms: editing?.bedrooms ?? undefined,
       bathrooms: editing?.bathrooms ?? undefined,
       yearBuilt: editing?.yearBuilt ?? undefined,
       isBalloted: editing?.isBalloted ?? false,
-      fbrValuation: editing?.fbrValuation ? Number(editing.fbrValuation) : undefined,
+      fbrValuation: editing?.fbrValuation
+        ? Number(editing.fbrValuation)
+        : undefined,
       dcRate: editing?.dcRate ? Number(editing.dcRate) : undefined,
       parcelNumber: editing?.parcelNumber ?? "",
       cityId: editing?.cityId ?? editing?.address?.cityId ?? "",
@@ -191,13 +204,16 @@ export function PropertyForm({
     data.set("price", String(values.price));
     if (values.monthlyRent !== undefined)
       data.set("monthlyRent", String(values.monthlyRent));
-    if (values.bedrooms !== undefined) data.set("bedrooms", String(values.bedrooms));
+    if (values.bedrooms !== undefined)
+      data.set("bedrooms", String(values.bedrooms));
     if (values.bathrooms !== undefined)
       data.set("bathrooms", String(values.bathrooms));
-    if (values.yearBuilt !== undefined) data.set("yearBuilt", String(values.yearBuilt));
+    if (values.yearBuilt !== undefined)
+      data.set("yearBuilt", String(values.yearBuilt));
     if (values.parcelNumber) data.set("parcelNumber", values.parcelNumber);
     if (values.isBalloted) data.set("isBalloted", "true");
-    if (values.fbrValuation !== undefined) data.set("fbrValuation", String(values.fbrValuation));
+    if (values.fbrValuation !== undefined)
+      data.set("fbrValuation", String(values.fbrValuation));
     if (values.dcRate !== undefined) data.set("dcRate", String(values.dcRate));
     data.set("cityId", values.cityId);
     data.set("unitId", values.unitId);
@@ -284,7 +300,7 @@ export function PropertyForm({
   ];
 
   return (
-    <Dialog isOpen={isOpen} onOpenChange={setIsOpen} purpose="form" width="60%">
+    <Dialog isOpen={isOpen} onOpenChange={setIsOpen} purpose="form" width="40%">
       <Layout
         header={
           <LayoutHeader>
@@ -314,11 +330,26 @@ export function PropertyForm({
                     options={listingPurposeFilter}
                     isRequired
                   />
-                  <NumberField form={form} name="price" label="Price" isRequired />
+                  <NumberField
+                    form={form}
+                    name="price"
+                    label="Price"
+                    isRequired
+                  />
                 </FormLayout>
                 <FormLayout direction="horizontal">
-                  <NumberField form={form} name="monthlyRent" label="Monthly rent" isOptional />
-                  <NumberField form={form} name="yearBuilt" label="Year built" isOptional />
+                  <NumberField
+                    form={form}
+                    name="monthlyRent"
+                    label="Monthly rent"
+                    isOptional
+                  />
+                  <NumberField
+                    form={form}
+                    name="yearBuilt"
+                    label="Year built"
+                    isOptional
+                  />
                 </FormLayout>
                 <FormLayout direction="horizontal">
                   <NumberField
@@ -335,8 +366,18 @@ export function PropertyForm({
                   />
                 </FormLayout>
                 <FormLayout direction="horizontal">
-                  <NumberField form={form} name="bedrooms" label="Bedrooms" isOptional />
-                  <NumberField form={form} name="bathrooms" label="Bathrooms" isOptional />
+                  <NumberField
+                    form={form}
+                    name="bedrooms"
+                    label="Bedrooms"
+                    isOptional
+                  />
+                  <NumberField
+                    form={form}
+                    name="bathrooms"
+                    label="Bathrooms"
+                    isOptional
+                  />
                 </FormLayout>
               </FormLayout>
             ) : null}
@@ -354,8 +395,16 @@ export function PropertyForm({
                     label="Society"
                     isOptional
                     options={[
-                      { value: "", label: cityId ? "Select a society" : "Select a city first" },
-                      ...societyOptions.map((s) => ({ value: s.id, label: s.name })),
+                      {
+                        value: "",
+                        label: cityId
+                          ? "Select a society"
+                          : "Select a city first",
+                      },
+                      ...societyOptions.map((s) => ({
+                        value: s.id,
+                        label: s.name,
+                      })),
                     ]}
                     value={societyId}
                     onChange={setSocietyId}
@@ -364,8 +413,16 @@ export function PropertyForm({
                     label="Sector"
                     isOptional
                     options={[
-                      { value: "", label: societyId ? "Select a sector" : "Select a society first" },
-                      ...sectorOptions.map((s) => ({ value: s.id, label: s.name })),
+                      {
+                        value: "",
+                        label: societyId
+                          ? "Select a sector"
+                          : "Select a society first",
+                      },
+                      ...sectorOptions.map((s) => ({
+                        value: s.id,
+                        label: s.name,
+                      })),
                     ]}
                     value={sectorId}
                     onChange={setSectorId}
@@ -377,7 +434,12 @@ export function PropertyForm({
                     name="unitId"
                     label="Unit"
                     options={[
-                      { value: "", label: sectorId ? "Select a unit" : "Select a sector first" },
+                      {
+                        value: "",
+                        label: sectorId
+                          ? "Select a unit"
+                          : "Select a sector first",
+                      },
                       ...unitOptions.map((u) => ({
                         value: u.id,
                         label: `Unit ${u.unitNumber}`,
@@ -388,8 +450,9 @@ export function PropertyForm({
                 </FormLayout>
                 {duplicateUnit ? (
                   <Text color="secondary">
-                    This unit is already used by &quot;{duplicateUnit.title}&quot;.
-                    You can still list multiple properties on the same unit.
+                    This unit is already used by &quot;{duplicateUnit.title}
+                    &quot;. You can still list multiple properties on the same
+                    unit.
                   </Text>
                 ) : null}
               </FormLayout>
@@ -407,7 +470,12 @@ export function PropertyForm({
                     Features
                   </Text>
                   {featureRows.map((row, index) => (
-                    <Stack key={row.key} direction="horizontal" gap={2} vAlign="center">
+                    <Stack
+                      key={row.key}
+                      direction="horizontal"
+                      gap={2}
+                      vAlign="center"
+                    >
                       <TextInput
                         label="Name"
                         value={row.feature}
@@ -443,7 +511,9 @@ export function PropertyForm({
                           )
                         }
                       />
-                      <Text type="body" color="secondary">{index + 1}</Text>
+                      <Text type="body" color="secondary">
+                        {index + 1}
+                      </Text>
                     </Stack>
                   ))}
                   <Stack direction="horizontal" gap={2} vAlign="center">
@@ -481,12 +551,16 @@ export function PropertyForm({
                           onChange={(value) =>
                             setOwnerRows((rows) =>
                               rows.map((r) =>
-                                r.key === row.key ? { ...r, mode: value as "existing" | "new" } : r,
+                                r.key === row.key
+                                  ? { ...r, mode: value as "existing" | "new" }
+                                  : r,
                               ),
                             )
                           }
                         />
-                        <Text type="body" color="secondary">Owner {index + 1}</Text>
+                        <Text type="body" color="secondary">
+                          Owner {index + 1}
+                        </Text>
                         <Button
                           label="Remove"
                           size="sm"
@@ -513,19 +587,29 @@ export function PropertyForm({
                             onChange={(value) =>
                               setOwnerRows((rows) =>
                                 rows.map((r) =>
-                                  r.key === row.key ? { ...r, ownerId: value } : r,
+                                  r.key === row.key
+                                    ? { ...r, ownerId: value }
+                                    : r,
                                 ),
                               )
                             }
                           />
                           <NumberInput
                             label="Ownership %"
-                            value={row.percentage === "" ? null : Number(row.percentage)}
+                            value={
+                              row.percentage === ""
+                                ? null
+                                : Number(row.percentage)
+                            }
                             onChange={(value) =>
                               setOwnerRows((rows) =>
                                 rows.map((r) =>
                                   r.key === row.key
-                                    ? { ...r, percentage: value == null ? "" : String(value) }
+                                    ? {
+                                        ...r,
+                                        percentage:
+                                          value == null ? "" : String(value),
+                                      }
                                     : r,
                                 ),
                               )
@@ -553,7 +637,9 @@ export function PropertyForm({
                             onChange={(value) =>
                               setOwnerRows((rows) =>
                                 rows.map((r) =>
-                                  r.key === row.key ? { ...r, email: value } : r,
+                                  r.key === row.key
+                                    ? { ...r, email: value }
+                                    : r,
                                 ),
                               )
                             }
@@ -565,19 +651,29 @@ export function PropertyForm({
                             onChange={(value) =>
                               setOwnerRows((rows) =>
                                 rows.map((r) =>
-                                  r.key === row.key ? { ...r, phone: value } : r,
+                                  r.key === row.key
+                                    ? { ...r, phone: value }
+                                    : r,
                                 ),
                               )
                             }
                           />
                           <NumberInput
                             label="Ownership %"
-                            value={row.percentage === "" ? null : Number(row.percentage)}
+                            value={
+                              row.percentage === ""
+                                ? null
+                                : Number(row.percentage)
+                            }
                             onChange={(value) =>
                               setOwnerRows((rows) =>
                                 rows.map((r) =>
                                   r.key === row.key
-                                    ? { ...r, percentage: value == null ? "" : String(value) }
+                                    ? {
+                                        ...r,
+                                        percentage:
+                                          value == null ? "" : String(value),
+                                      }
                                     : r,
                                 ),
                               )

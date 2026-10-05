@@ -1,6 +1,5 @@
-CREATE EXTENSION IF NOT EXISTS "postgis";--> statement-breakpoint
 CREATE TYPE "activity_action" AS ENUM('create', 'delete', 'update', 'hide', 'show');--> statement-breakpoint
-CREATE TYPE "activity_entity_type" AS ENUM('users', 'userBankAccounts', 'properties', 'propertyFeatures', 'propertyImages', 'addresses', 'propertyOwner', 'maintenance', 'documents', 'deals', 'societies', 'plots');--> statement-breakpoint
+CREATE TYPE "activity_entity_type" AS ENUM('users', 'userBankAccounts', 'properties', 'propertyFeatures', 'propertyImages', 'addresses', 'propertyOwner', 'maintenance', 'documents', 'deals', 'societies', 'units');--> statement-breakpoint
 CREATE TYPE "address_entity_type" AS ENUM('user', 'property');--> statement-breakpoint
 CREATE TYPE "area_unit" AS ENUM('marla', 'kanal', 'acre', 'sqft', 'sqyd', 'sqm');--> statement-breakpoint
 CREATE TYPE "deal_frequency" AS ENUM('monthly', 'quarterly', 'annually');--> statement-breakpoint
@@ -10,13 +9,17 @@ CREATE TYPE "deal_status" AS ENUM('pending_acceptance', 'active', 'completed', '
 CREATE TYPE "deal_tax_payer" AS ENUM('seller', 'counterparty');--> statement-breakpoint
 CREATE TYPE "deal_type" AS ENUM('cash_sale', 'fixed_lease', 'periodic_rent', 'installment_purchase');--> statement-breakpoint
 CREATE TYPE "document_entity_type" AS ENUM('users', 'properties', 'maintenance', 'deals');--> statement-breakpoint
-CREATE TYPE "legal_noc_status" AS ENUM('balloted', 'noc_approved', 'file_under_process', 'registry_and_mutation');--> statement-breakpoint
+CREATE TYPE "filer_status" AS ENUM('filer', 'late_filer', 'non_filer');--> statement-breakpoint
 CREATE TYPE "listing_purpose" AS ENUM('sale', 'rent');--> statement-breakpoint
 CREATE TYPE "maintenance_priority" AS ENUM('low', 'medium', 'high', 'urgent');--> statement-breakpoint
 CREATE TYPE "maintenance_status" AS ENUM('new', 'assigned', 'in_progress', 'waiting_parts', 'completed', 'closed');--> statement-breakpoint
+CREATE TYPE "milestone_type" AS ENUM('booking', 'confirmation', 'monthly', 'balloting', 'allotment', 'other');--> statement-breakpoint
+CREATE TYPE "mutation_status" AS ENUM('not_applicable', 'pending', 'in_progress', 'completed');--> statement-breakpoint
+CREATE TYPE "noc_status" AS ENUM('not_required', 'file_under_process', 'approved');--> statement-breakpoint
 CREATE TYPE "payment_method" AS ENUM('cash', 'bank_transfer', 'cheque', 'card', 'online');--> statement-breakpoint
-CREATE TYPE "property_status" AS ENUM('available', 'sold', 'leased', 'rented', 'under_contract', 'off_market', 'occupied', 'vacant', 'maintenance', 'archived');--> statement-breakpoint
-CREATE TYPE "property_type" AS ENUM('residential', 'commercial', 'industrial', 'land', 'plot', 'apartment', 'house', 'office', 'warehouse', 'mixed_use');--> statement-breakpoint
+CREATE TYPE "possession_status" AS ENUM('not_applicable', 'pending', 'granted', 'disputed');--> statement-breakpoint
+CREATE TYPE "property_status" AS ENUM('available', 'off_market', 'occupied', 'vacant', 'maintenance', 'archived');--> statement-breakpoint
+CREATE TYPE "property_type" AS ENUM('residential', 'commercial', 'industrial', 'land', 'unit', 'apartment', 'house', 'office', 'warehouse', 'mixed_use');--> statement-breakpoint
 CREATE TYPE "society_kind" AS ENUM('housing_society', 'commercial_area', 'industrial_zone', 'general_locality');--> statement-breakpoint
 CREATE TYPE "state" AS ENUM('federal', 'punjab', 'sindh', 'kpk', 'balochistan', 'gilgit_baltistan', 'azad_kashmir');--> statement-breakpoint
 CREATE TYPE "tax_policy_kind" AS ENUM('percentage', 'fixed_amount');--> statement-breakpoint
@@ -79,8 +82,11 @@ CREATE TABLE "deal_lease_details" (
 	"deal_id" uuid PRIMARY KEY,
 	"rent_amount" numeric(14,2) NOT NULL,
 	"deposit_amount" numeric(14,2) DEFAULT '0' NOT NULL,
+	"advance_rent_months" smallint DEFAULT 0 NOT NULL,
 	"frequency" "deal_frequency" DEFAULT 'monthly'::"deal_frequency" NOT NULL,
 	"fixed_term" boolean DEFAULT true NOT NULL,
+	"notice_period_days" integer,
+	"agreement_registered_at" timestamp,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -98,6 +104,8 @@ CREATE TABLE "deal_payment_schedules" (
 	"deal_id" uuid NOT NULL,
 	"sequence" integer NOT NULL,
 	"due_on" date,
+	"milestone_type" "milestone_type" DEFAULT 'monthly'::"milestone_type" NOT NULL,
+	"event_date" date,
 	"principal_amount" numeric(14,2) NOT NULL,
 	"tax_amount" numeric(14,2) DEFAULT '0' NOT NULL,
 	"paid_principal" numeric(14,2) DEFAULT '0' NOT NULL,
@@ -150,6 +158,7 @@ CREATE TABLE "deal_tax_snapshots" (
 	"policy_name" varchar(255) NOT NULL,
 	"policy_kind" "tax_policy_kind" NOT NULL,
 	"policy_value" numeric(14,2) NOT NULL,
+	"filer_status_used" "filer_status",
 	"policy_code" varchar(100),
 	"authority" varchar(255),
 	"base_amount" numeric(14,2) NOT NULL,
@@ -169,8 +178,15 @@ CREATE TABLE "deals" (
 	"starts_on" date,
 	"ends_on" date,
 	"total_amount" numeric(14,2),
+	"earnest_amount" numeric(14,2),
+	"token_paid_at" timestamp,
 	"tax_amount" numeric(14,2) DEFAULT '0' NOT NULL,
 	"tax_payer" "deal_tax_payer" DEFAULT 'counterparty'::"deal_tax_payer" NOT NULL,
+	"noc_status" "noc_status" DEFAULT 'not_required'::"noc_status" NOT NULL,
+	"mutation_status" "mutation_status" DEFAULT 'not_applicable'::"mutation_status" NOT NULL,
+	"mutation_completed_at" timestamp,
+	"possession_status" "possession_status" DEFAULT 'not_applicable'::"possession_status" NOT NULL,
+	"possession_granted_at" timestamp,
 	"snapshot" jsonb NOT NULL,
 	"created_by" uuid NOT NULL,
 	"accepted_at" timestamp,
@@ -208,20 +224,6 @@ CREATE TABLE "maintenance" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "plots" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-	"sector_id" uuid NOT NULL,
-	"plot_number" varchar(50) NOT NULL,
-	"street_number" varchar(50),
-	"geometry" geography(Polygon,4326) NOT NULL,
-	"centroid" geography(Point,4326),
-	"area_value" numeric(10,2),
-	"area_unit" "area_unit",
-	"plot_type" "property_type",
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
-);
---> statement-breakpoint
 CREATE TABLE "properties" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 	"title" varchar(500) NOT NULL,
@@ -233,7 +235,7 @@ CREATE TABLE "properties" (
 	"city_id" uuid,
 	"society_id" uuid,
 	"sector_id" uuid,
-	"plot_id" uuid,
+	"unit_id" uuid,
 	"location_point" geography(Point,4326),
 	"price" numeric(14,2) NOT NULL,
 	"monthly_rent" numeric(14,2),
@@ -243,7 +245,9 @@ CREATE TABLE "properties" (
 	"bedrooms" smallint,
 	"bathrooms" smallint,
 	"year_built" integer,
-	"legal_noc_status" "legal_noc_status",
+	"is_balloted" boolean DEFAULT false NOT NULL,
+	"fbr_valuation" numeric(14,2),
+	"dc_rate" numeric(14,2),
 	"parcel_number" varchar(255),
 	"views_count" integer DEFAULT 0 NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
@@ -300,6 +304,7 @@ CREATE TABLE "societies" (
 	"slug" varchar(180) NOT NULL,
 	"kind" "society_kind" DEFAULT 'general_locality'::"society_kind" NOT NULL,
 	"developer" varchar(150),
+	"regulatory_authority" varchar(255),
 	"boundary" geography(Polygon,4326),
 	"description" text,
 	"cover_image" varchar(255),
@@ -312,7 +317,6 @@ CREATE TABLE "society_sectors" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 	"society_id" uuid NOT NULL,
 	"name" varchar(100) NOT NULL,
-	"boundary" geography(Polygon,4326),
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -321,6 +325,9 @@ CREATE TABLE "tax_policies" (
 	"name" varchar(255) NOT NULL UNIQUE,
 	"kind" "tax_policy_kind" NOT NULL,
 	"value" numeric(14,2) NOT NULL,
+	"min_value" numeric(14,2),
+	"max_value" numeric(14,2),
+	"filer_status" "filer_status",
 	"applies_to" "deal_type"[] NOT NULL,
 	"active" boolean DEFAULT true NOT NULL,
 	"effective_start" date,
@@ -330,6 +337,19 @@ CREATE TABLE "tax_policies" (
 	"description" text,
 	"notes" text,
 	"created_by" uuid NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "units" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	"sector_id" uuid NOT NULL,
+	"unit_number" varchar(50) NOT NULL,
+	"street_number" varchar(50),
+	"centroid" geography(Point,4326) NOT NULL,
+	"area_value" numeric(10,2),
+	"area_unit" "area_unit",
+	"type" "property_type",
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
@@ -353,6 +373,8 @@ CREATE TABLE "users" (
 	"role_id" uuid NOT NULL,
 	"avatar_url" text,
 	"phone" varchar(50) UNIQUE,
+	"cnic" varchar(15),
+	"filer_status" "filer_status" DEFAULT 'non_filer'::"filer_status",
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "users_email_or_phone_check" CHECK ("email" IS NOT NULL OR "phone" IS NOT NULL)
@@ -372,8 +394,6 @@ CREATE INDEX "deals_property_idx" ON "deals" ("property_id");--> statement-break
 CREATE INDEX "deals_status_idx" ON "deals" ("status");--> statement-breakpoint
 CREATE UNIQUE INDEX "deals_one_active_property_idx" ON "deals" ("property_id") WHERE "status" in ('pending_acceptance', 'active');--> statement-breakpoint
 CREATE INDEX "documents_entity_idx" ON "documents" ("entity_type","entity_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "plots_sector_plot_number_idx" ON "plots" ("sector_id","plot_number");--> statement-breakpoint
-CREATE INDEX "plots_geometry_gix" ON "plots" USING gist ("geometry");--> statement-breakpoint
 CREATE UNIQUE INDEX "properties_slug_idx" ON "properties" ("slug");--> statement-breakpoint
 CREATE INDEX "properties_location_gix" ON "properties" USING gist ("location_point");--> statement-breakpoint
 CREATE INDEX "properties_society_search_idx" ON "properties" ("society_id","listing_purpose","status");--> statement-breakpoint
@@ -388,9 +408,9 @@ CREATE UNIQUE INDEX "societies_slug_idx" ON "societies" ("slug");--> statement-b
 CREATE INDEX "societies_city_idx" ON "societies" ("city_id");--> statement-breakpoint
 CREATE INDEX "societies_boundary_gix" ON "societies" USING gist ("boundary");--> statement-breakpoint
 CREATE UNIQUE INDEX "society_sectors_society_name_idx" ON "society_sectors" ("society_id","name");--> statement-breakpoint
-CREATE INDEX "society_sectors_boundary_gix" ON "society_sectors" USING gist ("boundary");--> statement-breakpoint
 CREATE INDEX "tax_policies_active_idx" ON "tax_policies" ("active");--> statement-breakpoint
 CREATE INDEX "tax_policies_effective_idx" ON "tax_policies" ("effective_start","effective_end");--> statement-breakpoint
+CREATE UNIQUE INDEX "units_sector_unit_number_idx" ON "units" ("sector_id","unit_number");--> statement-breakpoint
 ALTER TABLE "activities" ADD CONSTRAINT "activities_done_by_users_id_fkey" FOREIGN KEY ("done_by") REFERENCES "users"("id");--> statement-breakpoint
 ALTER TABLE "addresses" ADD CONSTRAINT "addresses_city_id_cities_id_fkey" FOREIGN KEY ("city_id") REFERENCES "cities"("id");--> statement-breakpoint
 ALTER TABLE "deal_acceptances" ADD CONSTRAINT "deal_acceptances_deal_id_deals_id_fkey" FOREIGN KEY ("deal_id") REFERENCES "deals"("id") ON DELETE CASCADE;--> statement-breakpoint
@@ -415,11 +435,10 @@ ALTER TABLE "deals" ADD CONSTRAINT "deals_created_by_users_id_fkey" FOREIGN KEY 
 ALTER TABLE "documents" ADD CONSTRAINT "documents_uploaded_by_users_id_fkey" FOREIGN KEY ("uploaded_by") REFERENCES "users"("id");--> statement-breakpoint
 ALTER TABLE "maintenance" ADD CONSTRAINT "maintenance_property_id_properties_id_fkey" FOREIGN KEY ("property_id") REFERENCES "properties"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "maintenance" ADD CONSTRAINT "maintenance_assigned_to_users_id_fkey" FOREIGN KEY ("assigned_to") REFERENCES "users"("id");--> statement-breakpoint
-ALTER TABLE "plots" ADD CONSTRAINT "plots_sector_id_society_sectors_id_fkey" FOREIGN KEY ("sector_id") REFERENCES "society_sectors"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "properties" ADD CONSTRAINT "properties_city_id_cities_id_fkey" FOREIGN KEY ("city_id") REFERENCES "cities"("id");--> statement-breakpoint
 ALTER TABLE "properties" ADD CONSTRAINT "properties_society_id_societies_id_fkey" FOREIGN KEY ("society_id") REFERENCES "societies"("id");--> statement-breakpoint
 ALTER TABLE "properties" ADD CONSTRAINT "properties_sector_id_society_sectors_id_fkey" FOREIGN KEY ("sector_id") REFERENCES "society_sectors"("id");--> statement-breakpoint
-ALTER TABLE "properties" ADD CONSTRAINT "properties_plot_id_plots_id_fkey" FOREIGN KEY ("plot_id") REFERENCES "plots"("id");--> statement-breakpoint
+ALTER TABLE "properties" ADD CONSTRAINT "properties_unit_id_units_id_fkey" FOREIGN KEY ("unit_id") REFERENCES "units"("id");--> statement-breakpoint
 ALTER TABLE "property_features" ADD CONSTRAINT "property_features_property_id_properties_id_fkey" FOREIGN KEY ("property_id") REFERENCES "properties"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "property_images" ADD CONSTRAINT "property_images_property_id_properties_id_fkey" FOREIGN KEY ("property_id") REFERENCES "properties"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "property_owner" ADD CONSTRAINT "property_owner_property_id_properties_id_fkey" FOREIGN KEY ("property_id") REFERENCES "properties"("id") ON DELETE CASCADE;--> statement-breakpoint
@@ -430,5 +449,6 @@ ALTER TABLE "property_tax_assignments" ADD CONSTRAINT "property_tax_assignments_
 ALTER TABLE "societies" ADD CONSTRAINT "societies_city_id_cities_id_fkey" FOREIGN KEY ("city_id") REFERENCES "cities"("id") ON DELETE RESTRICT;--> statement-breakpoint
 ALTER TABLE "society_sectors" ADD CONSTRAINT "society_sectors_society_id_societies_id_fkey" FOREIGN KEY ("society_id") REFERENCES "societies"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "tax_policies" ADD CONSTRAINT "tax_policies_created_by_users_id_fkey" FOREIGN KEY ("created_by") REFERENCES "users"("id");--> statement-breakpoint
+ALTER TABLE "units" ADD CONSTRAINT "units_sector_id_society_sectors_id_fkey" FOREIGN KEY ("sector_id") REFERENCES "society_sectors"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "user_bank_accounts" ADD CONSTRAINT "user_bank_accounts_user_id_users_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "users" ADD CONSTRAINT "users_role_id_roles_id_fkey" FOREIGN KEY ("role_id") REFERENCES "roles"("id");

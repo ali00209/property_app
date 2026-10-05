@@ -36,6 +36,7 @@ const TEXT_FIELDS = [
   "fbrValuation",
   "dcRate",
   "cityId",
+  "unitId",
 ] as const;
 
 const AREA_TO_SQFT: Record<AreaUnit, number> = {

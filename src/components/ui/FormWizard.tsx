@@ -11,6 +11,7 @@ export function FormWizard({
   onNext,
   onSubmit,
   canSubmit = false,
+  isSubmitting = false,
 }: {
   step: number;
   steps: string[];
@@ -19,6 +20,7 @@ export function FormWizard({
   onNext: () => void;
   onSubmit: () => void;
   canSubmit?: boolean;
+  isSubmitting?: boolean;
 }) {
   return (
     <FormLayout>
@@ -29,11 +31,23 @@ export function FormWizard({
       </Stepper>
       {children}
       <Stack direction="horizontal" justify="end" gap={2}>
-        {step > 0 ? <Button label="Back" onClick={onBack} /> : null}
+        {step > 0 ? (
+          <Button label="Back" onClick={onBack} isDisabled={isSubmitting} />
+        ) : null}
         {canSubmit ? (
-          <Button label="Save" variant="primary" onClick={onSubmit} />
+          <Button
+            label={isSubmitting ? "Saving…" : "Save"}
+            variant="primary"
+            onClick={onSubmit}
+            isDisabled={isSubmitting}
+          />
         ) : (
-          <Button label="Next" variant="primary" onClick={onNext} />
+          <Button
+            label="Next"
+            variant="primary"
+            onClick={onNext}
+            isDisabled={isSubmitting}
+          />
         )}
       </Stack>
     </FormLayout>

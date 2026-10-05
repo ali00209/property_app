@@ -180,6 +180,7 @@ export async function createSocietyAction(
           developer: parsed.data.developer,
           regulatoryAuthority: parsed.data.regulatoryAuthority,
           boundary: parsed.data.boundary || null,
+          coverImage: parsed.data.coverImage,
           isActive: parsed.data.isActive,
         })
         .returning();
@@ -222,6 +223,7 @@ export async function updateSocietyAction(
           developer: parsed.data.developer,
           regulatoryAuthority: parsed.data.regulatoryAuthority,
           boundary: parsed.data.boundary || null,
+          coverImage: parsed.data.coverImage,
           isActive: parsed.data.isActive,
           updatedAt: new Date(),
         })

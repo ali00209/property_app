@@ -20,6 +20,7 @@ import {
   History,
   LayoutDashboard,
   LogOut,
+  Map as MapIcon,
   MapPinned,
   PanelLeft,
   Receipt,
@@ -69,6 +70,20 @@ const navItems: Array<{
     label: "Transactions",
     role: ["admin", "accountant"],
     icon: ArrowLeftRight,
+  },
+  {
+    href: "/dashboard/map",
+    label: "Map",
+    role: [
+      "admin",
+      "client",
+      "accountant",
+      "maintenance_staff",
+      "owner",
+      "property_manager",
+      "tenant",
+    ],
+    icon: MapIcon,
   },
   {
     href: "/dashboard/areas",

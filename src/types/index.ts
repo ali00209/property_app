@@ -518,6 +518,7 @@ export interface MapArea {
   lng: number
   count: number
   boundary?: string | null
+  coverImage?: string | null
 }
 
 export interface MapUnit {

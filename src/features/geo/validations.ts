@@ -31,6 +31,14 @@ export const societySchema = z.object({
     .or(z.literal(""))
     .transform((v) => v || null),
   boundary: z.string().optional().default(""),
+  coverImage: z
+    .string()
+    .trim()
+    .max(255)
+    .optional()
+    .nullable()
+    .or(z.literal(""))
+    .transform((v) => v || null),
   isActive: z.boolean().default(true),
 });
 
@@ -79,6 +87,7 @@ export const societyDefaults: SocietyFormValues = {
   developer: null,
   regulatoryAuthority: null,
   boundary: "",
+  coverImage: null,
   isActive: true,
 };
 export const sectorDefaults: SectorFormValues = { societyId: "", name: "" };
