@@ -11,15 +11,18 @@ import {
   DialogHeader,
   FileInput,
   FormLayout,
+  Grid,
   Layout,
   LayoutContent,
   LayoutFooter,
   LayoutHeader,
+  SelectableCard,
   Slider,
   Stack,
   StackItem,
   Switch,
   Text,
+  Thumbnail,
 } from "@astryxdesign/core";
 import { societyKindFilter } from "@/lib/constants";
 import type { Society } from "@/types";
@@ -65,6 +68,32 @@ export function SocietyDialog({
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [opacity, setOpacity] = useState<number>(0.75);
+  const [uploadedImages, setUploadedImages] = useState<
+    Array<{ url: string; name: string }>
+  >([]);
+  const [showUploadedImages, setShowUploadedImages] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !showUploadedImages) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/uploads");
+        const json = (await res.json()) as {
+          ok?: boolean;
+          files?: Array<{ url: string; name: string }>;
+        };
+        if (!cancelled && json.ok) {
+          setUploadedImages(json.files ?? []);
+        }
+      } catch {
+        if (!cancelled) setUploadedImages([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, showUploadedImages]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -87,6 +116,7 @@ export function SocietyDialog({
     setImageFile(null);
     setImageUrl(editing?.coverImage ?? null);
     setOpacity(0.75);
+    setShowUploadedImages(false);
     setErrorMessage(null);
   }, [isOpen, editing, cityId, form]);
 
@@ -300,11 +330,57 @@ export function SocietyDialog({
                       ) : null}
                     </Stack>
 
-                    {imageUrl && !imageFile ? (
+                    {editing?.coverImage && imageUrl === editing.coverImage ? (
                       <Text type="body" color="secondary">
                         Current saved image: {imageUrl.split("/").pop()}
                       </Text>
                     ) : null}
+
+                    <Stack gap={2}>
+                      <Button
+                        label={
+                          showUploadedImages
+                            ? "Hide uploaded images"
+                            : "Choose from uploaded images"
+                        }
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          setShowUploadedImages((value) => !value)
+                        }
+                      />
+                      {showUploadedImages ? (
+                        uploadedImages.length === 0 ? (
+                          <Text type="body" color="secondary">
+                            No uploaded images yet — upload one above.
+                          </Text>
+                        ) : (
+                          <Grid columns={{ minWidth: 112, max: 6 }} gap={2}>
+                            {uploadedImages.map((image) => (
+                              <SelectableCard
+                                key={image.url}
+                                label={image.name}
+                                isSelected={
+                                  !imageFile && imageUrl === image.url
+                                }
+                                onChange={(selected) => {
+                                  if (!selected) return;
+                                  setImageFile(null);
+                                  setImageUrl(image.url);
+                                }}
+                                padding={1}
+                              >
+                                <Thumbnail
+                                  src={image.url}
+                                  alt={image.name}
+                                  label={image.name}
+                                />
+                              </SelectableCard>
+                            ))}
+                          </Grid>
+                        )
+                      ) : null}
+                    </Stack>
 
                     {previewUrl ? (
                       <Slider

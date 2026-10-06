@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { Stack, Text } from "@astryxdesign/core";
 import type { SocietySector } from "@/types";
-import { FormDialog, SelectField, TextField } from "@/components/ui";
+import { FormDialog, TextField } from "@/components/ui";
 import { createSectorAction, updateSectorAction } from "./actions";
 import { sectorSchema, type SectorFormValues } from "./validations";
 

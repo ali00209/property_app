@@ -1,8 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { UPLOAD_DIR } from "@/lib/upload";
+
+const IMAGE_EXTENSIONS = new Set([
+  "jpg",
+  "jpeg",
+  "png",
+  "gif",
+  "webp",
+  "avif",
+]);
+
+const MAX_LISTED_IMAGES = 48;
+
+export async function GET() {
+  let entries;
+  try {
+    entries = await readdir(UPLOAD_DIR, { withFileTypes: true });
+  } catch {
+    return NextResponse.json({ ok: true, files: [] });
+  }
+
+  const images = (
+    await Promise.all(
+      entries
+        .filter(
+          (entry) =>
+            entry.isFile() &&
+            IMAGE_EXTENSIONS.has(
+              path.extname(entry.name).slice(1).toLowerCase(),
+            ),
+        )
+        .map(async (entry) => {
+          const info = await stat(path.join(UPLOAD_DIR, entry.name));
+          return {
+            url: `/api/uploads/${entry.name}`,
+            name: entry.name,
+            fileType: path.extname(entry.name).slice(1).toLowerCase(),
+            fileSize: info.size,
+            uploadedAt: info.mtimeMs,
+          };
+        }),
+    )
+  )
+    .sort((a, b) => b.uploadedAt - a.uploadedAt)
+    .slice(0, MAX_LISTED_IMAGES);
+
+  return NextResponse.json({ ok: true, files: images });
+}
 
 const EXTENSION_BY_MIME: Record<string, string> = {
   "image/jpeg": "jpg",
